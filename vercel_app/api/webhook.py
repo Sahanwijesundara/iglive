@@ -15,21 +15,30 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 # --- Database Connection ---
-# Vercel will provide the DATABASE_URL environment variable.
-# Ensure it's configured in your Vercel project settings.
 DATABASE_URL = os.environ.get('DATABASE_URL')
-if not DATABASE_URL:
-    # A fallback for local development, if needed.
-    # Replace with your actual Supabase connection string for local testing.
-    logger.warning("DATABASE_URL environment variable not set. Using a default local fallback.")
-    DATABASE_URL = "postgresql://user:password@host:port/database"
+engine = None
 
+# Log the database URL for debugging (masking the password)
+if DATABASE_URL:
+    try:
+        # Simple masking for the log
+        safe_url = DATABASE_URL.split('@')[1]
+        logger.info(f"DATABASE_URL found, connecting to: postgresql://postgres:****@{safe_url}")
+    except Exception:
+        logger.info("DATABASE_URL found, but could not parse for safe logging.")
+else:
+    logger.error("FATAL: DATABASE_URL environment variable not set.")
+
+# Create engine separately to catch initialization errors
 try:
-    engine = create_engine(DATABASE_URL)
-    logger.info("Database engine created successfully.")
+    if DATABASE_URL:
+        engine = create_engine(DATABASE_URL)
+        logger.info("Database engine created successfully.")
+    else:
+        logger.error("Skipping engine creation because DATABASE_URL is not set.")
 except Exception as e:
     logger.error(f"Failed to create database engine: {e}", exc_info=True)
-    engine = None
+    # The 'engine' variable will remain None
 
 @app.route('/api/webhook', methods=['POST'])
 def handle_webhook():
@@ -63,23 +72,28 @@ def handle_webhook():
 
     # 3. Insert the job into the database
     try:
+        logger.info("Attempting to connect to the database to insert job...")
         with engine.connect() as connection:
-            # The job_type can be determined by inspecting the payload structure.
-            # For this MVP, we'll use a generic 'process_telegram_update' type.
-            job_type = 'process_telegram_update'
-            
-            insert_query = text("""
-                INSERT INTO jobs (job_type, payload, status, created_at, updated_at)
-                VALUES (:job_type, :payload, 'pending', :created_at, :updated_at)
-            """)
-            
-            connection.execute(insert_query, {
-                'job_type': job_type,
-                'payload': json.dumps(update_data), # Store payload as a JSON string
-                'created_at': datetime.utcnow(),
-                'updated_at': datetime.utcnow()
-            })
-            # The connection context manager will automatically commit.
+            logger.info("Database connection successful. Beginning transaction.")
+            with connection.begin() as transaction:
+                try:
+                    job_type = 'process_telegram_update'
+                    insert_query = text("""
+                        INSERT INTO jobs (job_type, payload, status, created_at, updated_at)
+                        VALUES (:job_type, :payload, 'pending', :created_at, :updated_at)
+                    """)
+                    connection.execute(insert_query, {
+                        'job_type': job_type,
+                        'payload': json.dumps(update_data),
+                        'created_at': datetime.utcnow(),
+                        'updated_at': datetime.utcnow()
+                    })
+                    transaction.commit()
+                    logger.info("Job insertion transaction committed.")
+                except Exception:
+                    transaction.rollback()
+                    logger.error("Transaction rolled back due to an error.")
+                    raise
         
         logger.info(f"Successfully queued job for update_id: {update_id}")
 
