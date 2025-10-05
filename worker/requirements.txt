@@ -1,0 +1,6 @@
+# Worker process requirements
+
+SQLAlchemy>=1.4
+psycopg2-binary>=2.9
+telethon>=1.28
+requests>=2.28
