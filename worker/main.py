@@ -4,7 +4,7 @@ import os
 import json
 import logging
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import traceback
 import asyncio
 
@@ -97,7 +97,7 @@ async def poll_for_jobs():
         try:
             with engine.connect() as connection:
                 # Atomically fetch a pending job and update its status to 'processing'
-                stale_time = datetime.utcnow() - timedelta(minutes=JOB_TIMEOUT_MINUTES)
+                stale_time = datetime.now(timezone.utc) - timedelta(minutes=JOB_TIMEOUT_MINUTES)
                 claim_query = text("""
                     WITH next_job AS (
                         SELECT job_id FROM jobs
@@ -114,11 +114,12 @@ async def poll_for_jobs():
                 result = connection.execute(claim_query, {
                     'stale_time': stale_time,
                     'max_retries': MAX_RETRIES,
-                    'now': datetime.utcnow()
+                    'now': datetime.now(timezone.utc)
                 }).fetchone()
 
                 if result:
-                    job = dict(result)
+                    # The result object is already dict-like. No conversion needed.
+                    job = result
                     logger.info(f"Claimed job_id: {job['job_id']}")
 
             # Process the job outside the main transaction to avoid holding locks
@@ -128,7 +129,7 @@ async def poll_for_jobs():
                     with engine.connect() as update_connection:
                         if success:
                             update_query = text("UPDATE jobs SET status = 'completed', updated_at = :now WHERE job_id = :job_id")
-                            update_connection.execute(update_query, {'now': datetime.utcnow(), 'job_id': job['job_id']})
+                            update_connection.execute(update_query, {'now': datetime.now(timezone.utc), 'job_id': job['job_id']})
                             logger.info(f"Job {job['job_id']} completed successfully.")
                         else:
                             # This case is for when process_job explicitly returns False
@@ -137,7 +138,7 @@ async def poll_for_jobs():
                     logger.error(f"Error processing job {job['job_id']}: {processing_error}", exc_info=True)
                     with engine.connect() as error_connection:
                         update_query = text("UPDATE jobs SET status = 'failed', retries = retries + 1, updated_at = :now WHERE job_id = :job_id")
-                        error_connection.execute(update_query, {'now': datetime.utcnow(), 'job_id': job['job_id']})
+                        error_connection.execute(update_query, {'now': datetime.now(timezone.utc), 'job_id': job['job_id']})
                         logger.warning(f"Job {job['job_id']} failed. Retry count is now {job['retries'] + 1}.")
             else:
                 # No jobs found, sleep asynchronously
