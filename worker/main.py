@@ -47,9 +47,19 @@ async def process_job(job, session_factory):
     """
     Processes a job from the queue by routing it to the appropriate handler.
     """
-    logger.info(f"Processing job_id: {job['job_id']} of type: {job['job_type']}")
-    payload = job.get('payload', {})
-    job_type = job.get('job_type')
+    job_id = job['job_id']
+    job_type = job['job_type']
+    payload_str = job.get('payload', '{}')
+
+    # Safely parse the JSON payload
+    try:
+        payload = json.loads(payload_str)
+    except json.JSONDecodeError:
+        logger.error(f"Invalid JSON payload for job_id: {job_id}. Payload: {payload_str}")
+        # Mark as failed to prevent retries of a malformed job
+        return False
+
+    logger.info(f"Processing job_id: {job_id} of type: {job_type}")
     session = session_factory()
 
     try:
@@ -77,7 +87,7 @@ async def process_job(job, session_factory):
 
         return True  # Assume success to prevent retries for unhandled types
     except Exception as e:
-        logger.error(f"Error processing job {job['job_id']}: {e}", exc_info=True)
+        logger.error(f"Error processing job {job_id}: {e}", exc_info=True)
         return False # Explicitly return False on error
     finally:
         session.close()
@@ -118,8 +128,13 @@ async def poll_for_jobs():
                 }).fetchone()
 
                 if result:
-                    # The result object is already dict-like. No conversion needed.
-                    job = result
+                    # Manually construct a dictionary from the row object
+                    job = {
+                        'job_id': result[0],
+                        'job_type': result[1],
+                        'payload': result[2],
+                        'retries': result[3]
+                    }
                     logger.info(f"Claimed job_id: {job['job_id']}")
 
             # Process the job outside the main transaction to avoid holding locks
