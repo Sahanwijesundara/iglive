@@ -85,15 +85,15 @@ class TelegramUser(Base):
 
 class UserActivity(Base):
     __tablename__ = 'user_activity'
-    user_id = Column(Integer, primary_key=True, nullable=False)
-    chat_id = Column(Integer, primary_key=True, nullable=False)
+    user_id = Column(BIGINT, primary_key=True, nullable=False)
+    chat_id = Column(BIGINT, primary_key=True, nullable=False)
     last_message_time = Column(DateTime, default=datetime.now)
     username = Column(String)
 
 class UserBot(Base):
     __tablename__ = 'user_bots'
     id = Column(Integer, primary_key=True, autoincrement=True)
-    owner_id = Column(Integer, ForeignKey('telegram_users.id'))
+    owner_id = Column(BIGINT, ForeignKey('telegram_users.id'))
     bot_token = Column(String, unique=True, nullable=False)
     bot_username = Column(String)
     is_active = Column(Boolean, default=True)
@@ -102,8 +102,8 @@ class UserBot(Base):
 class Referral(Base):
     __tablename__ = 'referrals'
     id = Column(Integer, primary_key=True, autoincrement=True)
-    referrer_id = Column(Integer, ForeignKey('telegram_users.id'), nullable=False)
-    referred_id = Column(Integer, ForeignKey('telegram_users.id'), nullable=False)
+    referrer_id = Column(BIGINT, ForeignKey('telegram_users.id'), nullable=False)
+    referred_id = Column(BIGINT, ForeignKey('telegram_users.id'), nullable=False)
     referral_code = Column(String, unique=True, nullable=False)
     created_at = Column(DateTime, default=datetime.now)
     points_awarded = Column(Boolean, default=False)
@@ -113,7 +113,7 @@ class Referral(Base):
 class PointsTransaction(Base):
     __tablename__ = 'points_transactions'
     id = Column(Integer, primary_key=True, autoincrement=True)
-    user_id = Column(Integer, ForeignKey('telegram_users.id'), nullable=False)
+    user_id = Column(BIGINT, ForeignKey('telegram_users.id'), nullable=False)
     transaction_type = Column(String, nullable=False)
     points_amount = Column(Integer, nullable=False)
     description = Column(Text)
