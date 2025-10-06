@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from telethon import TelegramClient
 
-from models import TelegramUser
+from models import TelegramUser, ChatGroup
 from telegram_helper import TelegramHelper
 
 # --- Logging Setup ---
@@ -37,8 +37,8 @@ async def send_user_feedback(user_id: int, message: str):
     # For now, this is a placeholder.
     logger.info(f"FEEDBACK to {user_id}: {message}")
     # In a real implementation:
-    # async with TelegramClient('worker_session', BOT_API_ID, BOT_API_HASH) as client:
-    #     await client.send_message(user_id, message)
+    helper = TelegramHelper()
+    await helper.send_message(user_id, message)
 
 
 async def start_handler(session: Session, payload: dict):
@@ -112,6 +112,7 @@ async def start_handler(session: Session, payload: dict):
     except Exception as e:
         logger.error(f"Error in start_handler for user {sender_id}: {e}", exc_info=True)
         session.rollback()
+        raise
     finally:
         session.close()
 
@@ -142,6 +143,7 @@ async def my_account_handler(session: Session, payload: dict):
 
     except Exception as e:
         logger.error(f"Error in my_account_handler for user {sender_id}: {e}", exc_info=True)
+        raise
     finally:
         session.close()
 
@@ -182,6 +184,7 @@ async def check_live_handler(session: Session, payload: dict):
     except Exception as e:
         logger.error(f"Error in check_live_handler for user {sender_id}: {e}", exc_info=True)
         session.rollback()
+        raise
     finally:
         session.close()
 
@@ -213,6 +216,118 @@ async def join_request_handler(session: Session, payload: dict):
 
     except Exception as e:
         logger.error(f"Error in join_request_handler: {e}", exc_info=True)
+        raise
+    finally:
+        session.close()
+
+
+async def init_handler(session: Session, payload: dict):
+    """
+    Handles the /init command sent in a group chat.
+    Registers the group and the admin.
+    """
+    try:
+        message = payload.get('message', {})
+        chat = message.get('chat', {})
+        from_user = message.get('from', {})
+        
+        chat_id = chat.get('id')
+        user_id = from_user.get('id')
+        chat_title = chat.get('title')
+
+        if not chat_id or not user_id:
+            logger.error("Could not determine chat_id or user_id from /init payload.")
+            return
+
+        # 1. Check if the user is an admin in the group
+        helper = TelegramHelper()
+        is_admin = await helper.is_user_admin(chat_id, user_id)
+        if not is_admin:
+            await helper.send_message(chat_id, "You must be an admin of this group to use the /init command.")
+            logger.warning(f"User {user_id} tried to /init in {chat_id} but is not an admin.")
+            return
+
+        # 2. Check if the bot itself is an admin
+        bot_is_admin = await helper.is_bot_admin(chat_id)
+        if not bot_is_admin:
+            await helper.send_message(chat_id, "This bot must be an administrator in this group to function correctly.")
+            logger.warning(f"Bot is not an admin in chat {chat_id}. Cannot complete /init.")
+            return
+
+        # 3. Register the group and admin
+        group = session.query(ChatGroup).filter_by(chat_id=str(chat_id)).first()
+        if group:
+            group.admin_user_id = user_id
+            group.is_active = True
+            group.title = chat_title
+        else:
+            group = ChatGroup(
+                chat_id=str(chat_id),
+                admin_user_id=user_id,
+                title=chat_title,
+                is_active=True
+            )
+            session.add(group)
+        
+        session.commit()
+        logger.info(f"Group {chat_id} ('{chat_title}') initialized/updated by admin {user_id}.")
+        await helper.send_message(chat_id, f"✅ This group has been successfully registered. The admin is {from_user.get('first_name')}.")
+
+    except Exception as e:
+        logger.error(f"Error in init_handler for chat {chat_id}: {e}", exc_info=True)
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+
+async def activate_handler(session: Session, payload: dict):
+    """
+    Handles the /activate command to grant a user unlimited points.
+    """
+    try:
+        message = payload.get('message', {})
+        chat = message.get('chat', {})
+        from_user = message.get('from', {})
+        
+        chat_id = chat.get('id')
+        user_id = from_user.get('id')
+
+        if not chat_id or not user_id:
+            logger.error("Could not determine chat_id or user_id from /activate payload.")
+            return
+
+        # 1. Find the group in the database
+        group = session.query(ChatGroup).filter_by(chat_id=str(chat_id), is_active=True).first()
+        if not group:
+            await send_user_feedback(user_id, "This group is not registered. Please use /init in the group first.")
+            return
+
+        # 2. Check if the user is the registered admin of this group
+        if group.admin_user_id != user_id:
+            await send_user_feedback(user_id, "You are not the registered admin for this group.")
+            return
+            
+        # 3. Grant unlimited points to the user
+        user = session.query(TelegramUser).filter_by(id=user_id).first()
+        if not user:
+            # This should be rare, as they likely used /start already
+            logger.warning(f"User {user_id} used /activate but was not in the users table. Creating new entry.")
+            user = TelegramUser(id=user_id, username=from_user.get('username'), first_name=from_user.get('first_name'))
+            session.add(user)
+
+        user.is_unlimited = True
+        # Set subscription_end to a far-future date to represent "unlimited"
+        user.subscription_end = datetime(2099, 12, 31, tzinfo=timezone.utc)
+        session.commit()
+
+        logger.info(f"User {user_id} has been granted unlimited points via group {chat_id}.")
+        await send_user_feedback(user_id, "🎉 Congratulations! You now have unlimited points.")
+
+    except Exception as e:
+        logger.error(f"Error in activate_handler for user {user_id}: {e}", exc_info=True)
+        session.rollback()
+        raise
     finally:
         session.close()
 
@@ -250,5 +365,6 @@ async def broadcast_message_handler(session: Session, payload: dict):
 
     except Exception as e:
         logger.error(f"Error in broadcast_message_handler: {e}", exc_info=True)
+        raise
     finally:
         session.close()

@@ -3,7 +3,7 @@
 from datetime import datetime
 from sqlalchemy import (
     create_engine, Column, Integer, String, DateTime, Float, Boolean, Text,
-    ForeignKey, event
+    ForeignKey, event, BIGINT
 )
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.ext.declarative import declarative_base
@@ -73,13 +73,13 @@ class ChatGroup(Base):
 
 class TelegramUser(Base):
     __tablename__ = 'telegram_users'
-    id = Column(Integer, primary_key=True)
+    id = Column(BIGINT, primary_key=True)
     username = Column(String)
     first_name = Column(String)
     points = Column(Integer, default=10)
     last_seen = Column(DateTime, default=datetime.now)
     subscription_end = Column(DateTime, nullable=True)
-    referred_by_id = Column(Integer, ForeignKey('telegram_users.id'), nullable=True)
+    referred_by_id = Column(BIGINT, ForeignKey('telegram_users.id'), nullable=True)
     user_bots = relationship("UserBot", back_populates="owner")
     referrals = relationship("TelegramUser", backref="referrer", remote_side=[id])
 
