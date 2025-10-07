@@ -86,7 +86,7 @@ async def process_job(job, session_factory):
     finally:
         session.close()
 
-async def worker_main_loop(session_factory):
+async def worker_main_loop(session_factory, run_once=False):
     """
     The main loop for the worker.
     - Fetches a pending job from the database.
@@ -94,6 +94,7 @@ async def worker_main_loop(session_factory):
     - Calls process_job to handle it.
     - Updates the job status based on the result.
     """
+    run_once_retries = 0
     while True:
         job_to_process = None
         session = session_factory()
@@ -148,7 +149,20 @@ async def worker_main_loop(session_factory):
                     })
                     session.commit()
                     logger.info(f"Job {job_to_process['job_id']} finished with status: {final_status}")
+                
+                if run_once:
+                    logger.info("run_once is True, exiting after processing one job.")
+                    break
             else:
+                if run_once:
+                    if run_once_retries >= 2: # Try up to 3 times (0, 1, 2)
+                        logger.info("run_once is True, exiting worker loop after multiple attempts.")
+                        break
+                    run_once_retries += 1
+                    logger.info(f"run_once mode: No job found, retrying... (Attempt {run_once_retries})")
+                    await asyncio.sleep(1) # Wait a bit for the transaction to commit
+                    continue
+
                 await asyncio.sleep(POLLING_INTERVAL)
 
         except Exception as e:
@@ -160,25 +174,33 @@ async def worker_main_loop(session_factory):
             session.close()
 
 
-if __name__ == '__main__':
-    # Correctly load the .env file from the parent directory
-    dotenv_path = os.path.join(os.path.dirname(__file__), '../.env')
-    load_dotenv(dotenv_path=dotenv_path)
+def main(run_once=False, engine=None):
+    # If no engine is passed, create one (for standalone execution)
+    if engine is None:
+        # Correctly load the .env file from the parent directory
+        dotenv_path = os.path.join(os.path.dirname(__file__), '../.env')
+        load_dotenv(dotenv_path=dotenv_path)
 
-    DATABASE_URL = os.environ.get('DATABASE_URL')
-    if not DATABASE_URL:
-        raise ValueError("DATABASE_URL not found in environment.")
+        DATABASE_URL = os.environ.get('DATABASE_URL')
+        if not DATABASE_URL:
+            raise ValueError("DATABASE_URL not found in environment.")
 
-    try:
-        engine = create_engine(DATABASE_URL)
-        SessionFactory = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-        logger.info("Database engine and session factory created successfully.")
-    except Exception as e:
-        logger.error(f"Failed to create database engine: {e}", exc_info=True)
-        exit(1)
+        try:
+            engine = create_engine(DATABASE_URL)
+            logger.info("Database engine created successfully.")
+        except Exception as e:
+            logger.error(f"Failed to create database engine: {e}", exc_info=True)
+            exit(1)
+            
+    # Create a session factory from the (potentially shared) engine
+    SessionFactory = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    logger.info("Session factory created.")
 
     logger.info("Starting worker process...")
     try:
-        asyncio.run(worker_main_loop(SessionFactory))
+        asyncio.run(worker_main_loop(SessionFactory, run_once=run_once))
     except KeyboardInterrupt:
         logger.info("Worker process stopped by user.")
+
+if __name__ == '__main__':
+    main()

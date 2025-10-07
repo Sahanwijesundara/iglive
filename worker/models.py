@@ -63,6 +63,10 @@ class InstaLink(Base):
 class ChatGroup(Base):
     __tablename__ = 'chat_groups'
     chat_id = Column(Text, primary_key=True)
+    title = Column(String, nullable=True)
+    admin_user_id = Column(BIGINT, ForeignKey('telegram_users.id'), nullable=True)
+    is_active = Column(Boolean, default=False, nullable=False)
+
     account_id = Column(Text)
     photo_error_count = Column(Integer, default=0, nullable=False)
     is_text_only = Column(Boolean, default=False, nullable=False)
@@ -70,6 +74,8 @@ class ChatGroup(Base):
     is_disabled = Column(Boolean, default=False, nullable=False)
     disabled_until = Column(DateTime)
     member_count = Column(Integer, default=0, nullable=False)
+
+    admin_user = relationship("TelegramUser")
 
 class TelegramUser(Base):
     __tablename__ = 'telegram_users'

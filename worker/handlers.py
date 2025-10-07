@@ -4,7 +4,6 @@ import os
 import logging
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
-from telethon import TelegramClient
 
 from models import TelegramUser, ChatGroup
 from telegram_helper import TelegramHelper
@@ -113,8 +112,6 @@ async def start_handler(session: Session, payload: dict):
         logger.error(f"Error in start_handler for user {sender_id}: {e}", exc_info=True)
         session.rollback()
         raise
-    finally:
-        session.close()
 
 
 async def my_account_handler(session: Session, payload: dict):
@@ -144,8 +141,6 @@ async def my_account_handler(session: Session, payload: dict):
     except Exception as e:
         logger.error(f"Error in my_account_handler for user {sender_id}: {e}", exc_info=True)
         raise
-    finally:
-        session.close()
 
 
 async def check_live_handler(session: Session, payload: dict):
@@ -185,8 +180,6 @@ async def check_live_handler(session: Session, payload: dict):
         logger.error(f"Error in check_live_handler for user {sender_id}: {e}", exc_info=True)
         session.rollback()
         raise
-    finally:
-        session.close()
 
 
 async def join_request_handler(session: Session, payload: dict):
@@ -217,8 +210,6 @@ async def join_request_handler(session: Session, payload: dict):
     except Exception as e:
         logger.error(f"Error in join_request_handler: {e}", exc_info=True)
         raise
-    finally:
-        session.close()
 
 
 async def init_handler(session: Session, payload: dict):
@@ -277,8 +268,6 @@ async def init_handler(session: Session, payload: dict):
         logger.error(f"Error in init_handler for chat {chat_id}: {e}", exc_info=True)
         session.rollback()
         raise
-    finally:
-        session.close()
 
 
 async def activate_handler(session: Session, payload: dict):
@@ -316,7 +305,6 @@ async def activate_handler(session: Session, payload: dict):
             user = TelegramUser(id=user_id, username=from_user.get('username'), first_name=from_user.get('first_name'))
             session.add(user)
 
-        user.is_unlimited = True
         # Set subscription_end to a far-future date to represent "unlimited"
         user.subscription_end = datetime(2099, 12, 31, tzinfo=timezone.utc)
         session.commit()
@@ -328,8 +316,6 @@ async def activate_handler(session: Session, payload: dict):
         logger.error(f"Error in activate_handler for user {user_id}: {e}", exc_info=True)
         session.rollback()
         raise
-    finally:
-        session.close()
 
 
 async def broadcast_message_handler(session: Session, payload: dict):
@@ -366,5 +352,3 @@ async def broadcast_message_handler(session: Session, payload: dict):
     except Exception as e:
         logger.error(f"Error in broadcast_message_handler: {e}", exc_info=True)
         raise
-    finally:
-        session.close()

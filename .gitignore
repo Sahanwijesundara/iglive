@@ -1,0 +1,10 @@
+# Environments
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Local test files
+create_test_job.py
+run_local_test.py
