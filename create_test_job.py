@@ -42,27 +42,37 @@ SAMPLE_PAYLOAD = {
 def create_test_job():
     """Connects to the database and inserts a new test job."""
     print("Connecting to the database...")
+    engine = create_engine(DATABASE_URL)
+    connection = None
     try:
-        engine = create_engine(DATABASE_URL)
-        with engine.connect() as connection:
-            print("Connection successful. Inserting test job...")
-            with connection.begin() as transaction:
-                insert_query = text("""
-                    INSERT INTO jobs (job_type, payload, status, created_at, updated_at)
-                    VALUES (:job_type, :payload, 'pending', :created_at, :updated_at)
-                """)
-                connection.execute(insert_query, {
-                    'job_type': 'process_telegram_update',
-                    'payload': json.dumps(SAMPLE_PAYLOAD),
-                    'created_at': datetime.now(timezone.utc),
-                    'updated_at': datetime.now(timezone.utc)
-                })
-                transaction.commit()
+        connection = engine.connect()
+        print("Connection successful. Inserting test job...")
+        
+        # --- Manual Transaction Control ---
+        transaction = connection.begin()
+        try:
+            insert_query = text("""
+                INSERT INTO jobs (job_type, payload, status, created_at, updated_at)
+                VALUES (:job_type, :payload, 'pending', :created_at, :updated_at)
+            """)
+            connection.execute(insert_query, {
+                'job_type': 'process_telegram_update',
+                'payload': json.dumps(SAMPLE_PAYLOAD),
+                'created_at': datetime.now(timezone.utc),
+                'updated_at': datetime.now(timezone.utc)
+            })
+            transaction.commit()
             print("[SUCCESS] Test job created successfully!")
             print("You can now run the worker to process it.")
+        except Exception as e:
+            print(f"[FAILURE] Transaction failed: {e}")
+            transaction.rollback()
 
     except Exception as e:
         print(f"[FAILURE] An error occurred: {e}")
+    finally:
+        if connection:
+            connection.close()
 
 if __name__ == "__main__":
     create_test_job()

@@ -8,3 +8,9 @@ __pycache__/
 # Local test files
 create_test_job.py
 run_local_test.py
+editor_info.txt
+
+# Environment configuration
+.env
+.vercel
+fetch_supabase_logs.py

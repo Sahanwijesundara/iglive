@@ -6,3 +6,4 @@ telethon>=1.28
 python-dotenv>=0.20
 httpx>=0.23
 requests>=2.28
+supabase>=2.3
