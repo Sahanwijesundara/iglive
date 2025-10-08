@@ -1,27 +1,25 @@
 # vercel_app/api/webhook.py
-
 import os
 import json
 import logging
 from datetime import datetime
 from flask import Flask, request, jsonify
 from sqlalchemy import create_engine, text
+from sqlalchemy.pool import NullPool
 
-# --- Logging Setup ---
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# --- Flask App Initialization ---
 app = Flask(__name__)
 
 # --- Database Connection ---
-DATABASE_URL = os.environ.get('DATABASE_URL')
+DATABASE_URL = os.environ.get('DATABASE_URL', '').strip()  # Strip whitespace
 engine = None
 
 # Log the database URL for debugging (masking the password)
 if DATABASE_URL:
     try:
-        # Simple masking for the log
         safe_url = DATABASE_URL.split('@')[1]
         logger.info(f"DATABASE_URL found, connecting to: postgresql://postgres:****@{safe_url}")
     except Exception:
@@ -32,13 +30,29 @@ else:
 # Create engine separately to catch initialization errors
 try:
     if DATABASE_URL:
-        engine = create_engine(DATABASE_URL)
-        logger.info("Database engine created successfully.")
+        # Check if DATABASE_URL already contains sslmode parameter
+        if 'sslmode=' in DATABASE_URL:
+            # URL already has sslmode, don't add it in connect_args
+            engine = create_engine(
+                DATABASE_URL,
+                poolclass=NullPool,
+                pool_pre_ping=True
+            )
+            logger.info("Database engine created successfully (sslmode from URL).")
+        else:
+            # Add sslmode via connect_args only if not in URL
+            engine = create_engine(
+                DATABASE_URL,
+                poolclass=NullPool,
+                connect_args={"sslmode": "require"},
+                pool_pre_ping=True
+            )
+            logger.info("Database engine created successfully (sslmode from connect_args).")
     else:
         logger.error("Skipping engine creation because DATABASE_URL is not set.")
 except Exception as e:
     logger.error(f"Failed to create database engine: {e}", exc_info=True)
-    # The 'engine' variable will remain None
+
 
 @app.route('/api/webhook', methods=['POST'])
 def handle_webhook():
