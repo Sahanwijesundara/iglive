@@ -199,33 +199,16 @@ def main(run_once=False, engine=None):
 
     logger.info("Starting worker process...")
     
-    # Start Instagram checker as background task if not in run_once mode
-    if not run_once:
-        try:
-            from instagram_checker import start_instagram_checker
-            logger.info("Starting Instagram live checker background task...")
-            # This will be run concurrently with the main worker loop
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            ig_task = loop.create_task(start_instagram_checker(SessionFactory)())
-            worker_task = loop.create_task(worker_main_loop(SessionFactory, run_once=run_once))
-            
-            try:
-                loop.run_until_complete(asyncio.gather(ig_task, worker_task))
-            except KeyboardInterrupt:
-                logger.info("Worker process stopped by user.")
-                ig_task.cancel()
-                worker_task.cancel()
-            finally:
-                loop.close()
-        except ImportError:
-            logger.warning("Instagram checker not available. Running without live tracking.")
-            asyncio.run(worker_main_loop(SessionFactory, run_once=run_once))
-    else:
-        try:
-            asyncio.run(worker_main_loop(SessionFactory, run_once=run_once))
-        except KeyboardInterrupt:
-            logger.info("Worker process stopped by user.")
+    # Instagram checker runs LOCALLY (not on Railway)
+    # Local script updates database, Railway worker just reads it
+    logger.info("Instagram checker: Running on local machine (not on Railway)")
+    logger.info("Make sure to run local_instagram_checker.py on your PC")
+    
+    # Run worker (handles Telegram bot only)
+    try:
+        asyncio.run(worker_main_loop(SessionFactory, run_once=run_once))
+    except KeyboardInterrupt:
+        logger.info("Worker process stopped by user.")
 
 if __name__ == '__main__':
     main()
