@@ -18,6 +18,7 @@ from handlers import (
     broadcast_message_handler,
     init_handler,
     activate_handler,
+    back_handler,
 )
 
 # --- Logging Setup ---
@@ -66,6 +67,8 @@ async def process_job(job, session_factory):
                     await my_account_handler(session, payload)
                 elif callback_data == 'check_live':
                     await check_live_handler(session, payload)
+                elif callback_data == 'back':
+                    await back_handler(session, payload)
                 else:
                     logger.info(f"No handler for callback_data: '{callback_data}'")
             elif 'chat_join_request' in payload:

@@ -3,6 +3,8 @@ import os
 import json
 import logging
 from datetime import datetime
+
+import httpx
 from flask import Flask, request, jsonify
 from sqlalchemy import create_engine, text
 from sqlalchemy.pool import NullPool
@@ -78,6 +80,19 @@ def handle_webhook():
 
     update_id = update_data.get('update_id')
     logger.info(f"Received webhook with update_id: {update_id}")
+
+    # Send immediate typing indicator for better UX
+    try:
+        if 'message' in update_data:
+            chat_id = update_data['message'].get('chat', {}).get('id')
+            if chat_id:
+                httpx.post(
+                    f"https://api.telegram.org/bot{os.environ.get('BOT_TOKEN')}/sendChatAction",
+                    json={"chat_id": chat_id, "action": "typing"},
+                    timeout=2.0,
+                )
+    except Exception as e:
+        logger.warning(f"Could not send typing indicator: {e}")
 
     # 2. (Optional but Recommended) Deduplication Check
     # In a full implementation, you would check a Redis cache or a `processed_webhooks` table

@@ -76,6 +76,15 @@ class TelegramHelper:
             return status in ['creator', 'administrator']
         return False
 
+    async def is_user_in_group(self, chat_id, user_id):
+        """Checks if a user is a member or admin of a chat."""
+        member_info = await self.get_chat_member(chat_id, user_id)
+        if member_info and member_info.get('ok'):
+            status = member_info['result'].get('status')
+            # A user is considered "in" the group if they are a member, admin, or the creator.
+            return status in ['creator', 'administrator', 'member']
+        return False
+
     async def get_me(self):
         """Gets the bot's own information."""
         async with httpx.AsyncClient(timeout=30.0) as client:

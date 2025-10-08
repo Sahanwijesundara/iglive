@@ -19,6 +19,11 @@ BOT_API_ID = os.environ.get('BOT_API_ID')
 BOT_API_HASH = os.environ.get('BOT_API_HASH')
 
 
+# --- Group Join Configuration ---
+REQUIRED_GROUP_URL = "https://t.me/+FBDgBcLD1C5jN2Jk"
+REQUIRED_GROUP_ID = -1002891494486
+
+
 def is_new_day_for_user(user: TelegramUser) -> bool:
     """Check if it's a new day for the user considering timezone."""
     if not user.last_seen:
@@ -49,9 +54,18 @@ async def send_main_menu(user_id: int, prefix_message: str = ""):
         menu_text += "💰 Manage your points and subscription\n"
         menu_text += "🎁 Invite friends for bonus points\n\n"
         menu_text += "Use the buttons below to get started:"
+
+        buttons = {
+            "inline_keyboard": [
+                [
+                    {"text": "🔴 Check LIVEs", "callback_data": "check_live"},
+                    {"text": "👤 My Account", "callback_data": "my_account"}
+                ]
+            ]
+        }
         
         helper = TelegramHelper()
-        await helper.send_message(user_id, menu_text)
+        await helper.send_message(user_id, menu_text, reply_markup=buttons)
         logger.info(f"Successfully sent main menu to {user_id}")
     except Exception as e:
         logger.error(f"Failed to send main menu to {user_id}: {e}", exc_info=True)
@@ -70,6 +84,21 @@ async def start_handler(session: Session, payload: dict):
         
         if not sender_id:
             logger.error("Could not determine sender_id from payload.")
+            return
+
+        # --- Group Membership Check ---
+        helper = TelegramHelper()
+        is_member = await helper.is_user_in_group(REQUIRED_GROUP_ID, sender_id)
+        if not is_member:
+            logger.info(f"User {sender_id} is not in the required group. Sending join prompt.")
+            join_button = {
+                "inline_keyboard": [[{"text": "Join Group", "url": REQUIRED_GROUP_URL}]]
+            }
+            await helper.send_message(
+                sender_id,
+                "You must join our group to use this bot.",
+                reply_markup=join_button
+            )
             return
 
         user = session.query(TelegramUser).filter_by(id=sender_id).first()
@@ -162,7 +191,15 @@ async def my_account_handler(session: Session, payload: dict):
         if is_unlimited:
             account_text += f"Subscription: Active until {user.subscription_end.strftime('%Y-%m-%d')}\n"
         
-        await send_user_feedback(sender_id, account_text)
+        helper = TelegramHelper()
+        buttons = {
+            "inline_keyboard": [
+                [
+                    {"text": "⬅️ Back", "callback_data": "back"}
+                ]
+            ]
+        }
+        await helper.send_message(sender_id, account_text, reply_markup=buttons)
         logger.info(f"Sent account details to user {user.id}")
 
     except Exception as e:
@@ -208,7 +245,16 @@ async def check_live_handler(session: Session, payload: dict):
         live_message += "🔴 @username3\n\n"
         live_message += f"Points remaining: {'♾️ Unlimited' if is_unlimited else user.points}"
         
-        await send_user_feedback(sender_id, live_message)
+        helper = TelegramHelper()
+        buttons = {
+            "inline_keyboard": [
+                [
+                    {"text": "🔄 Refresh", "callback_data": "check_live"},
+                    {"text": "⬅️ Back", "callback_data": "back"}
+                ]
+            ]
+        }
+        await helper.send_message(sender_id, live_message, reply_markup=buttons)
         logger.info(f"User {user.id} checked for live users. Points remaining: {user.points}")
 
     except Exception as e:
@@ -349,6 +395,28 @@ async def activate_handler(session: Session, payload: dict):
         logger.error(f"Error in activate_handler for user {user_id}: {e}", exc_info=True)
         session.rollback()
         raise
+
+
+async def back_handler(session: Session, payload: dict):
+    """
+    Handles the logic for a 'back' button press, sending the main menu.
+    """
+    try:
+        callback_query = payload.get('callback_query', {})
+        from_user = callback_query.get('from', {})
+        sender_id = from_user.get('id')
+
+        if not sender_id:
+            logger.error("Could not determine sender_id from back_handler payload.")
+            return
+        
+        await send_main_menu(sender_id, prefix_message="⬅️ Main Menu\n\n")
+        logger.info(f"Sent main menu to {sender_id} via back button.")
+
+    except Exception as e:
+        sender_id = payload.get('callback_query', {}).get('from', {}).get('id')
+        logger.error(f"Error in back_handler for user {sender_id}: {e}", exc_info=True)
+        # Do not re-raise, as it would mark the job as failed. Just log it.
 
 
 async def broadcast_message_handler(session: Session, payload: dict):
