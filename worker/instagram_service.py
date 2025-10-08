@@ -44,6 +44,9 @@ class InstagramService:
             
             self.client = Client()
             
+            # Set custom challenge handler BEFORE any login attempts
+            self.client.challenge_code_handler = self._challenge_code_handler
+            
             # Stealth settings to avoid detection/bans
             self.client.delay_range = [3, 7]  # Random 3-7 second delays between requests
             
