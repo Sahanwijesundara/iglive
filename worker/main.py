@@ -100,55 +100,53 @@ async def worker_main_loop(session_factory, run_once=False):
         session = session_factory()
         try:
             # --- 1. Fetch and Lock a Job ---
-            with session.begin_nested():
-                select_query = text("""
-                    SELECT * FROM jobs
-                    WHERE status = 'pending'
-                    ORDER BY created_at
-                    LIMIT 1
-                    FOR UPDATE SKIP LOCKED
-                """)
-                result = session.execute(select_query).fetchone()
+            select_query = text("""
+                SELECT * FROM jobs
+                WHERE status = 'pending'
+                ORDER BY created_at
+                LIMIT 1
+                FOR UPDATE SKIP LOCKED
+            """)
+            result = session.execute(select_query).fetchone()
 
-                if result:
-                    job_to_process = dict(result._mapping)
-                    update_query = text("""
-                        UPDATE jobs
-                        SET status = 'processing', updated_at = :now
-                        WHERE job_id = :job_id
-                    """)
-                    session.execute(update_query, {'now': datetime.now(timezone.utc), 'job_id': job_to_process['job_id']})
-                    session.commit()
-                    logger.info(f"Locked and picked up job_id: {job_to_process['job_id']}")
+            if result:
+                job_to_process = dict(result._mapping)
+                update_query = text("""
+                    UPDATE jobs
+                    SET status = 'processing', updated_at = :now
+                    WHERE job_id = :job_id
+                """)
+                session.execute(update_query, {'now': datetime.now(timezone.utc), 'job_id': job_to_process['job_id']})
+                session.commit()
+                logger.info(f"Locked and picked up job_id: {job_to_process['job_id']}")
 
             # --- 2. Process the Job ---
             if job_to_process:
                 success = await process_job(job_to_process, session_factory)
                 
                 # --- 3. Update Job Status ---
-                with session.begin_nested():
-                    retries = job_to_process.get('retries', 0)
-                    if success:
-                        final_status = 'completed'
+                retries = job_to_process.get('retries', 0)
+                if success:
+                    final_status = 'completed'
+                else:
+                    if retries < 3:
+                        final_status = 'pending' # Put it back in the queue for another try
                     else:
-                        if retries < 3:
-                            final_status = 'pending' # Put it back in the queue for another try
-                        else:
-                            final_status = 'failed'
+                        final_status = 'failed'
 
-                    update_query = text("""
-                        UPDATE jobs
-                        SET status = :status, retries = :retries, updated_at = :now
-                        WHERE job_id = :job_id
-                    """)
-                    session.execute(update_query, {
-                        'status': final_status,
-                        'retries': retries + 1 if not success else retries,
-                        'now': datetime.now(timezone.utc),
-                        'job_id': job_to_process['job_id']
-                    })
-                    session.commit()
-                    logger.info(f"Job {job_to_process['job_id']} finished with status: {final_status}")
+                update_query = text("""
+                    UPDATE jobs
+                    SET status = :status, retries = :retries, updated_at = :now
+                    WHERE job_id = :job_id
+                """)
+                session.execute(update_query, {
+                    'status': final_status,
+                    'retries': retries + 1 if not success else retries,
+                    'now': datetime.now(timezone.utc),
+                    'job_id': job_to_process['job_id']
+                })
+                session.commit()
+                logger.info(f"Job {job_to_process['job_id']} finished with status: {final_status}")
                 
                 if run_once:
                     logger.info("run_once is True, exiting after processing one job.")

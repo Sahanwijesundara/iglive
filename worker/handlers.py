@@ -2,6 +2,7 @@
 
 import os
 import logging
+import asyncio
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 
@@ -31,13 +32,30 @@ def is_new_day_for_user(user: TelegramUser) -> bool:
 
 async def send_user_feedback(user_id: int, message: str):
     """Send feedback to user with error handling."""
-    # This requires a Telegram client. For the worker, we can create a
-    # short-lived client or use a helper that sends via Bot API.
-    # For now, this is a placeholder.
     logger.info(f"FEEDBACK to {user_id}: {message}")
-    # In a real implementation:
-    helper = TelegramHelper()
-    await helper.send_message(user_id, message)
+    try:
+        helper = TelegramHelper()
+        await helper.send_message(user_id, message)
+        logger.info(f"Successfully sent feedback to {user_id}")
+    except Exception as e:
+        logger.error(f"Failed to send feedback to {user_id}: {e}", exc_info=True)
+
+
+async def send_main_menu(user_id: int, prefix_message: str = ""):
+    """Send the main menu to a user."""
+    try:
+        menu_text = f"{prefix_message}🎉 Welcome to InstaLive Pro! 🎉\n\n"
+        menu_text += "📱 Check who's live on Instagram\n"
+        menu_text += "💰 Manage your points and subscription\n"
+        menu_text += "🎁 Invite friends for bonus points\n\n"
+        menu_text += "Use the buttons below to get started:"
+        
+        helper = TelegramHelper()
+        await helper.send_message(user_id, menu_text)
+        logger.info(f"Successfully sent main menu to {user_id}")
+    except Exception as e:
+        logger.error(f"Failed to send main menu to {user_id}: {e}", exc_info=True)
+        raise
 
 
 async def start_handler(session: Session, payload: dict):
@@ -100,13 +118,14 @@ async def start_handler(session: Session, payload: dict):
             session.commit()
             prefix_message = "Your points have been reset to 10 for the day!\n\n"
             logger.info(f"Reset daily points for user {user.id}")
+        else:
+            # Update last_seen for existing user
+            user.last_seen = datetime.now(timezone.utc)
+            session.commit()
 
         # --- Send Main Menu ---
-        # In the worker, instead of sending a menu directly, we might enqueue
-        # another job for the bot to send a message. For now, we'll just log it.
-        logger.info(f"Should send main menu to {user.id} with prefix: '{prefix_message}'")
-        # Example of sending a response (would be implemented with a Telegram helper)
-        # await send_main_menu(user.id, message_text=prefix_message + "🎉 Welcome to InstaLive Pro! 🎉")
+        logger.info(f"Sending main menu to {user.id} with prefix: '{prefix_message}'")
+        await send_main_menu(user.id, prefix_message)
 
     except Exception as e:
         logger.error(f"Error in start_handler for user {sender_id}: {e}", exc_info=True)
@@ -129,14 +148,22 @@ async def my_account_handler(session: Session, payload: dict):
 
         user = session.query(TelegramUser).filter_by(id=sender_id).first()
         if not user:
-            # In a real app, send a message back. For now, just log.
             logger.warning(f"User {sender_id} not found for my_account.")
+            await send_user_feedback(sender_id, "Please use /start first to register.")
             return
 
-        # This is where you would format a message with the user's account details
-        # and then enqueue another job to send that message.
-        logger.info(f"Account details for user {user.id}: Points={user.points}, SubscribedUntil={user.subscription_end}")
-        # e.g., await enqueue_message_job(user.id, formatted_message)
+        # Format account details message
+        is_unlimited = user.subscription_end and user.subscription_end > datetime.now(timezone.utc)
+        account_text = f"👤 Account Details\n\n"
+        account_text += f"Name: {user.first_name}\n"
+        account_text += f"Username: @{user.username or 'Not set'}\n"
+        account_text += f"Points: {'♾️ Unlimited' if is_unlimited else user.points}\n"
+        
+        if is_unlimited:
+            account_text += f"Subscription: Active until {user.subscription_end.strftime('%Y-%m-%d')}\n"
+        
+        await send_user_feedback(sender_id, account_text)
+        logger.info(f"Sent account details to user {user.id}")
 
     except Exception as e:
         logger.error(f"Error in my_account_handler for user {sender_id}: {e}", exc_info=True)
@@ -159,6 +186,7 @@ async def check_live_handler(session: Session, payload: dict):
         user = session.query(TelegramUser).filter_by(id=sender_id).first()
         if not user:
             logger.warning(f"User {sender_id} not found for check_live.")
+            await send_user_feedback(sender_id, "Please use /start first to register.")
             return
 
         # Deduct points if not unlimited
@@ -169,11 +197,18 @@ async def check_live_handler(session: Session, payload: dict):
                 session.commit()
             else:
                 logger.info(f"User {user.id} has no points to check live users.")
-                # Enqueue a "no points" message job
+                await send_user_feedback(sender_id, "❌ You have no points left. Your points will reset tomorrow or upgrade to unlimited!")
                 return
         
         # In a real app, you would query the `insta_links` table for live users,
-        # format a paginated message, and enqueue a job to send it.
+        # format a paginated message, and send it.
+        live_message = "📱 Currently Live on Instagram:\n\n"
+        live_message += "🔴 @username1\n"
+        live_message += "🔴 @username2\n"
+        live_message += "🔴 @username3\n\n"
+        live_message += f"Points remaining: {'♾️ Unlimited' if is_unlimited else user.points}"
+        
+        await send_user_feedback(sender_id, live_message)
         logger.info(f"User {user.id} checked for live users. Points remaining: {user.points}")
 
     except Exception as e:
@@ -199,12 +234,10 @@ async def join_request_handler(session: Session, payload: dict):
             return
 
         # For the MVP, we will auto-approve join requests.
-        # A more advanced implementation would check rules from the `tele_group_management_system.py`.
         helper = TelegramHelper()
-        helper.approve_chat_join_request(chat_id, user_id)
+        await helper.approve_chat_join_request(chat_id, user_id)
 
         # Log the action to the database
-        # (This part would be built out more in a full implementation)
         logger.info(f"Auto-approved join request for user {user_id} in chat {chat_id}.")
 
     except Exception as e:
@@ -340,7 +373,7 @@ async def broadcast_message_handler(session: Session, payload: dict):
         for group in active_groups:
             try:
                 chat_id = int(group.chat_id)
-                helper.send_message(chat_id, message_text)
+                await helper.send_message(chat_id, message_text)
                 logger.info(f"Broadcasted message to group {chat_id}.")
                 # Implement rate limiting
                 await asyncio.sleep(1) # Simple 1-second delay between messages

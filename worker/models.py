@@ -121,7 +121,6 @@ class PointsTransaction(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(BIGINT, ForeignKey('telegram_users.id'), nullable=False)
     transaction_type = Column(String, nullable=False)
-    points_amount = Column(Integer, nullable=False)
     description = Column(Text)
     reference_id = Column(String)
     created_at = Column(DateTime, default=datetime.now)
@@ -135,3 +134,14 @@ class QueueItem(Base):
     created_at = Column(DateTime, default=datetime.now)
     processed = Column(Boolean, default=False)
     priority = Column(Integer, default=0)
+
+
+class Job(Base):
+    __tablename__ = 'jobs'
+    job_id = Column(Integer, primary_key=True, autoincrement=True)
+    job_type = Column(String, nullable=False)
+    payload = Column(Text, nullable=False)
+    status = Column(String, default='pending', nullable=False)
+    retries = Column(Integer, default=0, nullable=False)
+    created_at = Column(DateTime, default=datetime.now, nullable=False)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, nullable=False)

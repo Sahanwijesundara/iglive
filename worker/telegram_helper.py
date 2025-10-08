@@ -1,7 +1,6 @@
 # worker/telegram_helper.py
 
 import os
-import requests
 import logging
 import httpx
 
@@ -24,10 +23,11 @@ class TelegramHelper:
         if reply_markup:
             payload['reply_markup'] = reply_markup
 
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             try:
                 response = await client.post(f"{self.base_url}/sendMessage", json=payload)
                 response.raise_for_status()
+                logger.info(f"Message sent successfully to {chat_id}")
                 return response.json()
             except httpx.HTTPStatusError as e:
                 logger.error(f"Error sending message to {chat_id}: {e.response.text}")
@@ -39,7 +39,7 @@ class TelegramHelper:
     async def approve_chat_join_request(self, chat_id, user_id):
         """Approves a chat join request."""
         payload = {'chat_id': chat_id, 'user_id': user_id}
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             try:
                 response = await client.post(f"{self.base_url}/approveChatJoinRequest", json=payload)
                 response.raise_for_status()
@@ -55,7 +55,7 @@ class TelegramHelper:
     async def get_chat_member(self, chat_id, user_id):
         """Gets information about a member of a chat."""
         payload = {'chat_id': chat_id, 'user_id': user_id}
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             try:
                 response = await client.post(f"{self.base_url}/getChatMember", json=payload)
                 response.raise_for_status()
@@ -78,7 +78,7 @@ class TelegramHelper:
 
     async def get_me(self):
         """Gets the bot's own information."""
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=30.0) as client:
             try:
                 response = await client.get(f"{self.base_url}/getMe")
                 response.raise_for_status()
