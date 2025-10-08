@@ -1,13 +1,13 @@
 # worker/instagram_service.py
 
 import os
+import sys
 import logging
 import asyncio
-from typing import List, Dict, Optional
 from datetime import datetime, timezone
+from typing import List, Dict, Optional
 
 logger = logging.getLogger(__name__)
-
 # Instagram credentials from environment
 IG_USERNAME = os.environ.get('IG_USERNAME')
 IG_PASSWORD = os.environ.get('IG_PASSWORD')
@@ -146,8 +146,47 @@ class InstagramService:
         """Handler for challenge verification codes"""
         logger.info(f"Challenge required for {username}. Choice: {choice}")
         logger.info("Check your email/SMS for the verification code.")
-        code = input(f"Enter verification code: ").strip()
-        return code
+        
+        # Check if running on Railway (or any non-interactive environment)
+        if os.environ.get('RAILWAY_ENVIRONMENT') or not sys.stdin.isatty():
+            logger.warning("=" * 60)
+            logger.warning("VERIFICATION CODE NEEDED!")
+            logger.warning("=" * 60)
+            logger.warning(f"Instagram is asking for verification for {username}")
+            logger.warning(f"Check your email/SMS for a 6-digit code")
+            logger.warning("")
+            logger.warning("TO SUBMIT THE CODE:")
+            logger.warning("Visit: https://<your-railway-url>/submit_code?code=XXXXXX")
+            logger.warning("Replace XXXXXX with your 6-digit code")
+            logger.warning("")
+            logger.warning("Waiting for code submission (5 minute timeout)...")
+            logger.warning("=" * 60)
+            
+            # Import and use the web-based code handler
+            try:
+                from challenge_handler import wait_for_code, start_challenge_server
+                
+                # Start the server if not already running
+                try:
+                    start_challenge_server(port=int(os.environ.get('PORT', '8080')))
+                except:
+                    pass  # Server might already be running
+                
+                # Wait for code
+                code = wait_for_code(timeout=300)
+                if code:
+                    logger.info(f"Code received: {code}")
+                    return code
+                else:
+                    logger.error("Timeout waiting for verification code")
+                    raise Exception("Verification code timeout")
+            except Exception as e:
+                logger.error(f"Error in web challenge handler: {e}")
+                raise
+        else:
+            # Local/interactive mode
+            code = input(f"Enter verification code: ").strip()
+            return code
     
     async def get_live_users(self, usernames: List[str] = None) -> List[Dict]:
         """
