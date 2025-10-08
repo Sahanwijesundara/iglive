@@ -7,3 +7,4 @@ python-dotenv>=0.20
 httpx>=0.23
 requests>=2.28
 supabase>=2.3
+instagrapi>=1.16  # For Instagram API access

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from models import TelegramUser, ChatGroup
 from telegram_helper import TelegramHelper
+from instagram_checker import get_currently_live_users
 
 # --- Logging Setup ---
 logger = logging.getLogger(__name__)
@@ -237,12 +238,26 @@ async def check_live_handler(session: Session, payload: dict):
                 await send_user_feedback(sender_id, "❌ You have no points left. Your points will reset tomorrow or upgrade to unlimited!")
                 return
         
-        # In a real app, you would query the `insta_links` table for live users,
-        # format a paginated message, and send it.
-        live_message = "📱 Currently Live on Instagram:\n\n"
-        live_message += "🔴 @username1\n"
-        live_message += "🔴 @username2\n"
-        live_message += "🔴 @username3\n\n"
+        # Get currently live users from database (updated by instagram_checker)
+        live_users = await get_currently_live_users(session)
+        
+        # Format message with live users
+        if live_users:
+            live_message = "📱 Currently Live on Instagram:\n\n"
+            live_message += "Note: This list is updated every 10 minutes.\n\n"
+            for user_data in live_users[:10]:  # Show max 10 users
+                username = user_data['username']
+                total_lives = user_data.get('total_lives', 0)
+                link = user_data.get('link', f"https://instagram.com/{username.lstrip('@')}")
+                live_message += f"🔴 {username}\n"
+                live_message += f"   Total Lives: {total_lives} | [Watch]({link})\n\n"
+            
+            if len(live_users) > 10:
+                live_message += f"...and {len(live_users) - 10} more\n\n"
+        else:
+            live_message = "📱 Currently Live on Instagram:\n\n"
+            live_message += "No one is live right now. 😴\n\n"
+        
         live_message += f"Points remaining: {'♾️ Unlimited' if is_unlimited else user.points}"
         
         helper = TelegramHelper()
@@ -254,8 +269,8 @@ async def check_live_handler(session: Session, payload: dict):
                 ]
             ]
         }
-        await helper.send_message(sender_id, live_message, reply_markup=buttons)
-        logger.info(f"User {user.id} checked for live users. Points remaining: {user.points}")
+        await helper.send_message(sender_id, live_message, parse_mode="Markdown", reply_markup=buttons)
+        logger.info(f"User {user.id} checked for live users. Found {len(live_users)} live. Points remaining: {user.points}")
 
     except Exception as e:
         logger.error(f"Error in check_live_handler for user {sender_id}: {e}", exc_info=True)
