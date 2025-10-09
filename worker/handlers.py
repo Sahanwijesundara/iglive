@@ -74,7 +74,8 @@ async def send_main_menu(user_id: int, prefix_message: str = "", username: str =
                     {"text": get_text('referrals', lang), "callback_data": "referrals"}
                 ],
                 [
-                    {"text": get_text('help', lang), "callback_data": "help"}
+                    {"text": get_text('help', lang), "callback_data": "help"},
+                    {"text": get_text('settings', lang), "callback_data": "settings"}
                 ]
             ]
         }
@@ -749,3 +750,102 @@ async def broadcast_message_handler(session: Session, payload: dict):
 
     except Exception as e:
         logger.error(f"Error in broadcast_message_handler: {e}", exc_info=True)
+
+
+async def settings_handler(session: Session, payload: dict):
+    """Display settings menu with language selection."""
+    try:
+        callback_query = payload.get('callback_query', {})
+        from_user = callback_query.get('from', {})
+        sender_id = from_user.get('id')
+        message = callback_query.get('message', {})
+        chat_id = message.get('chat', {}).get('id')
+        message_id = message.get('message_id')
+
+        if not sender_id:
+            return
+
+        helper = TelegramHelper()
+        
+        user = session.query(TelegramUser).filter_by(id=sender_id).first()
+        if not user:
+            await send_user_feedback(sender_id, "❌ Please use /start first to register.")
+            return
+
+        lang = user.language
+        
+        settings_text = get_text('settings_title', lang) + "\n"
+        settings_text += "━━━━━━━━━━━━━━━━━━━━\n\n"
+        settings_text += get_text('current_language', lang, language=LANGUAGE_NAMES.get(lang, lang)) + "\n\n"
+        settings_text += get_text('select_language', lang)
+        
+        # Create language selection buttons (2 per row)
+        lang_buttons = []
+        languages = list(LANGUAGE_NAMES.items())
+        for i in range(0, len(languages), 2):
+            row = []
+            for j in range(2):
+                if i + j < len(languages):
+                    lang_code, lang_name = languages[i + j]
+                    # Add checkmark to current language
+                    display_name = f"✓ {lang_name}" if lang_code == lang else lang_name
+                    row.append({"text": display_name, "callback_data": f"lang:{lang_code}"})
+            lang_buttons.append(row)
+        
+        lang_buttons.append([{"text": get_text('back_to_menu', lang), "callback_data": "back"}])
+        
+        buttons = {"inline_keyboard": lang_buttons}
+        
+        await helper.edit_message_text(chat_id, message_id, settings_text, parse_mode="Markdown", reply_markup=buttons)
+        logger.info(f"Displayed settings for user {user.id}")
+
+    except Exception as e:
+        logger.error(f"Error in settings_handler: {e}", exc_info=True)
+        raise
+
+
+async def change_language_handler(session: Session, payload: dict):
+    """Change user's language preference."""
+    try:
+        callback_query = payload.get('callback_query', {})
+        from_user = callback_query.get('from', {})
+        sender_id = from_user.get('id')
+        username = from_user.get('first_name', 'there')
+        message = callback_query.get('message', {})
+        chat_id = message.get('chat', {}).get('id')
+        message_id = message.get('message_id')
+        callback_data = callback_query.get('data', '')
+
+        if not sender_id or not callback_data.startswith('lang:'):
+            return
+
+        # Extract language code from callback_data (e.g., "lang:es" -> "es")
+        new_lang = callback_data.split(':')[1]
+        
+        if new_lang not in LANGUAGE_NAMES:
+            logger.warning(f"Invalid language code: {new_lang}")
+            return
+
+        helper = TelegramHelper()
+        
+        user = session.query(TelegramUser).filter_by(id=sender_id).first()
+        if not user:
+            await send_user_feedback(sender_id, "❌ Please use /start first to register.")
+            return
+
+        # Update user's language
+        old_lang = user.language
+        user.language = new_lang
+        session.commit()
+        
+        logger.info(f"User {user.id} changed language from {old_lang} to {new_lang}")
+        
+        # Show confirmation and return to main menu
+        confirmation = get_text('language_changed', new_lang, language=LANGUAGE_NAMES[new_lang]) + "\n\n"
+        
+        await send_main_menu(user.id, confirmation, username, new_lang)
+
+    except Exception as e:
+        logger.error(f"Error in change_language_handler: {e}", exc_info=True)
+        session.rollback()
+        raise

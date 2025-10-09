@@ -21,6 +21,8 @@ from handlers import (
     back_handler,
     help_handler,
     referrals_handler,
+    settings_handler,
+    change_language_handler,
 )
 
 # --- Logging Setup ---
@@ -75,6 +77,10 @@ async def process_job(job, session_factory):
                     await help_handler(session, payload)
                 elif callback_data == 'referrals':
                     await referrals_handler(session, payload)
+                elif callback_data == 'settings':
+                    await settings_handler(session, payload)
+                elif callback_data.startswith('lang:'):
+                    await change_language_handler(session, payload)
                 else:
                     logger.info(f"No handler for callback_data: '{callback_data}'")
             elif 'chat_join_request' in payload:
