@@ -422,7 +422,7 @@ async def referrals_handler(session: Session, payload: dict):
         referral_text += "2️⃣ Friend joins via link\n"
         referral_text += "3️⃣ You both get +10 points!\n\n"
         
-        bot_username = os.environ.get('BOT_USERNAME', 'InstaLiveProBot')
+        bot_username = os.environ.get('BOT_USERNAME', 'IGLiveZBot')
         referral_link = f"https://t.me/{bot_username}?start={user.id}"
         
         referral_text += "🔗 *Your Referral Link:*\n"
