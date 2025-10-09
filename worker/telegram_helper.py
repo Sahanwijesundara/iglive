@@ -36,6 +36,52 @@ class TelegramHelper:
                 logger.error(f"Network error sending message to {chat_id}: {e}")
                 return None
 
+    async def edit_message_text(self, chat_id, message_id, text, parse_mode=None, reply_markup=None):
+        """Edits an existing message text."""
+        payload = {
+            'chat_id': chat_id,
+            'message_id': message_id,
+            'text': text
+        }
+        if parse_mode:
+            payload['parse_mode'] = parse_mode
+        if reply_markup:
+            payload['reply_markup'] = reply_markup
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            try:
+                response = await client.post(f"{self.base_url}/editMessageText", json=payload)
+                response.raise_for_status()
+                logger.info(f"Message {message_id} edited successfully in chat {chat_id}")
+                return response.json()
+            except httpx.HTTPStatusError as e:
+                logger.error(f"Error editing message {message_id} in {chat_id}: {e.response.text}")
+                return None
+            except httpx.RequestError as e:
+                logger.error(f"Network error editing message {message_id}: {e}")
+                return None
+
+    async def answer_callback_query(self, callback_query_id, text=None, show_alert=False):
+        """Answers a callback query from an inline keyboard button."""
+        payload = {'callback_query_id': callback_query_id}
+        if text:
+            payload['text'] = text
+        if show_alert:
+            payload['show_alert'] = show_alert
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            try:
+                response = await client.post(f"{self.base_url}/answerCallbackQuery", json=payload)
+                response.raise_for_status()
+                logger.info(f"Callback query {callback_query_id} answered")
+                return response.json()
+            except httpx.HTTPStatusError as e:
+                logger.error(f"Error answering callback query {callback_query_id}: {e.response.text}")
+                return None
+            except httpx.RequestError as e:
+                logger.error(f"Network error answering callback query {callback_query_id}: {e}")
+                return None
+
     async def approve_chat_join_request(self, chat_id, user_id):
         """Approves a chat join request."""
         payload = {'chat_id': chat_id, 'user_id': user_id}

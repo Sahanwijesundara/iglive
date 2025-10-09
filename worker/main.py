@@ -67,7 +67,7 @@ async def process_job(job, session_factory):
                 callback_data = payload['callback_query'].get('data')
                 if callback_data == 'my_account':
                     await my_account_handler(session, payload)
-                elif callback_data == 'check_live':
+                elif callback_data == 'check_live' or callback_data.startswith('check_live:'):
                     await check_live_handler(session, payload)
                 elif callback_data == 'back':
                     await back_handler(session, payload)

@@ -200,10 +200,18 @@ async def my_account_handler(session: Session, payload: dict):
         callback_query = payload.get('callback_query', {})
         from_user = callback_query.get('from', {})
         sender_id = from_user.get('id')
+        message = callback_query.get('message', {})
+        chat_id = message.get('chat', {}).get('id')
+        message_id = message.get('message_id')
 
         if not sender_id:
             logger.error("Could not determine sender_id from payload.")
             return
+
+        helper = TelegramHelper()
+        
+        # Answer the callback query immediately
+        await helper.answer_callback_query(callback_query.get('id'))
 
         user = session.query(TelegramUser).filter_by(id=sender_id).first()
         if not user:
@@ -236,7 +244,6 @@ async def my_account_handler(session: Session, payload: dict):
         
         account_text += "\n💡 *Tip:* Refer friends to earn bonus points!"
         
-        helper = TelegramHelper()
         buttons = {
             "inline_keyboard": [
                 [
@@ -247,8 +254,10 @@ async def my_account_handler(session: Session, payload: dict):
                 ]
             ]
         }
-        await helper.send_message(sender_id, account_text, parse_mode="Markdown", reply_markup=buttons)
-        logger.info(f"Sent account details to user {user.id}")
+        
+        # Edit the existing message instead of sending a new one
+        await helper.edit_message_text(chat_id, message_id, account_text, parse_mode="Markdown", reply_markup=buttons)
+        logger.info(f"Edited message with account details for user {user.id}")
 
     except Exception as e:
         logger.error(f"Error in my_account_handler for user {sender_id}: {e}", exc_info=True)
@@ -261,10 +270,18 @@ async def check_live_handler(session: Session, payload: dict):
         callback_query = payload.get('callback_query', {})
         from_user = callback_query.get('from', {})
         sender_id = from_user.get('id')
+        message = callback_query.get('message', {})
+        chat_id = message.get('chat', {}).get('id')
+        message_id = message.get('message_id')
 
         if not sender_id:
             logger.error("Could not determine sender_id from payload.")
             return
+
+        helper = TelegramHelper()
+        
+        # Answer the callback query immediately
+        await helper.answer_callback_query(callback_query.get('id'))
 
         # Parse page number from callback_data (e.g., "check_live:2")
         callback_data = callback_query.get('data', 'check_live')
@@ -345,7 +362,6 @@ async def check_live_handler(session: Session, payload: dict):
         live_message += f"⏰ *Updated:* {datetime.now(timezone.utc).strftime('%I:%M %p UTC')}"
         
         # Build pagination buttons
-        helper = TelegramHelper()
         button_rows = []
         
         if total_pages > 1:
@@ -361,7 +377,9 @@ async def check_live_handler(session: Session, payload: dict):
         button_rows.append([{"text": "⬅️ Back to Menu", "callback_data": "back"}])
         
         buttons = {"inline_keyboard": button_rows}
-        await helper.send_message(sender_id, live_message, parse_mode="Markdown", reply_markup=buttons)
+        
+        # Edit the existing message instead of sending a new one
+        await helper.edit_message_text(chat_id, message_id, live_message, parse_mode="Markdown", reply_markup=buttons)
         logger.info(f"User {user.id} checked live users page {page}/{total_pages}. Total: {total_users} live. Points: {user.points}")
 
     except Exception as e:
@@ -376,10 +394,18 @@ async def referrals_handler(session: Session, payload: dict):
         callback_query = payload.get('callback_query', {})
         from_user = callback_query.get('from', {})
         sender_id = from_user.get('id')
+        message = callback_query.get('message', {})
+        chat_id = message.get('chat', {}).get('id')
+        message_id = message.get('message_id')
 
         if not sender_id:
             logger.error("Could not determine sender_id from payload.")
             return
+
+        helper = TelegramHelper()
+        
+        # Answer the callback query immediately
+        await helper.answer_callback_query(callback_query.get('id'))
 
         user = session.query(TelegramUser).filter_by(id=sender_id).first()
         if not user:
@@ -408,7 +434,6 @@ async def referrals_handler(session: Session, payload: dict):
         referral_text += f"`{referral_link}`\n\n"
         referral_text += "_(Tap to copy)_"
         
-        helper = TelegramHelper()
         buttons = {
             "inline_keyboard": [
                 [
@@ -419,7 +444,9 @@ async def referrals_handler(session: Session, payload: dict):
                 ]
             ]
         }
-        await helper.send_message(sender_id, referral_text, parse_mode="Markdown", reply_markup=buttons)
+        
+        # Edit the existing message instead of sending a new one
+        await helper.edit_message_text(chat_id, message_id, referral_text, parse_mode="Markdown", reply_markup=buttons)
 
     except Exception as e:
         logger.error(f"Error in referrals_handler: {e}", exc_info=True)
@@ -432,9 +459,17 @@ async def help_handler(session: Session, payload: dict):
         callback_query = payload.get('callback_query', {})
         from_user = callback_query.get('from', {})
         sender_id = from_user.get('id')
+        message = callback_query.get('message', {})
+        chat_id = message.get('chat', {}).get('id')
+        message_id = message.get('message_id')
 
         if not sender_id:
             return
+
+        helper = TelegramHelper()
+        
+        # Answer the callback query immediately
+        await helper.answer_callback_query(callback_query.get('id'))
 
         help_text = "ℹ️ *HELP & INFO*\n"
         help_text += "━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -462,7 +497,6 @@ async def help_handler(session: Session, payload: dict):
         help_text += "❓ *Need more help?*\n"
         help_text += "Contact support in our group!"
         
-        helper = TelegramHelper()
         buttons = {
             "inline_keyboard": [
                 [
@@ -473,7 +507,9 @@ async def help_handler(session: Session, payload: dict):
                 ]
             ]
         }
-        await helper.send_message(sender_id, help_text, parse_mode="Markdown", reply_markup=buttons)
+        
+        # Edit the existing message instead of sending a new one
+        await helper.edit_message_text(chat_id, message_id, help_text, parse_mode="Markdown", reply_markup=buttons)
 
     except Exception as e:
         logger.error(f"Error in help_handler: {e}", exc_info=True)
@@ -487,11 +523,49 @@ async def back_handler(session: Session, payload: dict):
         from_user = callback_query.get('from', {})
         sender_id = from_user.get('id')
         username = from_user.get('first_name', 'there')
+        message = callback_query.get('message', {})
+        chat_id = message.get('chat', {}).get('id')
+        message_id = message.get('message_id')
 
         if not sender_id:
             return
 
-        await send_main_menu(sender_id, username=username)
+        helper = TelegramHelper()
+        
+        # Answer the callback query immediately
+        await helper.answer_callback_query(callback_query.get('id'))
+        
+        # Build main menu text
+        greeting = f"Hey {username}! 👋" if username else "Welcome back! 👋"
+        
+        menu_text = f"{greeting}\n\n"
+        menu_text += "⭐️ *InstaLive Pro* ⭐️\n"
+        menu_text += "━━━━━━━━━━━━━━━━━━━━\n\n"
+        menu_text += "🔴 *Track Instagram Live Streams*\n"
+        menu_text += "     See who's live in real-time\n\n"
+        menu_text += "💎 *Smart Points System*\n"
+        menu_text += "     Get 10 free points daily\n\n"
+        menu_text += "🎁 *Refer & Earn*\n"
+        menu_text += "     10 bonus points per referral\n\n"
+        menu_text += "Choose an option below to continue:"
+
+        buttons = {
+            "inline_keyboard": [
+                [
+                    {"text": "🔴 Check Live", "callback_data": "check_live"}
+                ],
+                [
+                    {"text": "👤 My Account", "callback_data": "my_account"},
+                    {"text": "🎁 Referrals", "callback_data": "referrals"}
+                ],
+                [
+                    {"text": "ℹ️ Help", "callback_data": "help"}
+                ]
+            ]
+        }
+        
+        # Edit the existing message instead of sending a new one
+        await helper.edit_message_text(chat_id, message_id, menu_text, parse_mode="Markdown", reply_markup=buttons)
 
     except Exception as e:
         logger.error(f"Error in back_handler: {e}", exc_info=True)
