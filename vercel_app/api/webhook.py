@@ -81,22 +81,40 @@ def handle_webhook():
     update_id = update_data.get('update_id')
     logger.info(f"Received webhook with update_id: {update_id}")
 
-    # Send immediate typing indicator for better UX
+    # Send immediate responses for better UX
     try:
-        chat_id = None
-        if 'message' in update_data:
-            chat_id = update_data['message'].get('chat', {}).get('id')
-        elif 'callback_query' in update_data:
-            chat_id = update_data['callback_query'].get('message', {}).get('chat', {}).get('id')
+        bot_token = os.environ.get('BOT_TOKEN')
         
-        if chat_id:
-            httpx.post(
-                f"https://api.telegram.org/bot{os.environ.get('BOT_TOKEN')}/sendChatAction",
-                json={"chat_id": chat_id, "action": "typing"},
-                timeout=2.0,
-            )
+        # Answer callback query immediately to remove button highlight
+        if 'callback_query' in update_data:
+            callback_query_id = update_data['callback_query'].get('id')
+            if callback_query_id:
+                httpx.post(
+                    f"https://api.telegram.org/bot{bot_token}/answerCallbackQuery",
+                    json={"callback_query_id": callback_query_id},
+                    timeout=2.0,
+                )
+            
+            # Send typing indicator for callback queries
+            chat_id = update_data['callback_query'].get('message', {}).get('chat', {}).get('id')
+            if chat_id:
+                httpx.post(
+                    f"https://api.telegram.org/bot{bot_token}/sendChatAction",
+                    json={"chat_id": chat_id, "action": "typing"},
+                    timeout=2.0,
+                )
+        
+        # Send typing indicator for regular messages
+        elif 'message' in update_data:
+            chat_id = update_data['message'].get('chat', {}).get('id')
+            if chat_id:
+                httpx.post(
+                    f"https://api.telegram.org/bot{bot_token}/sendChatAction",
+                    json={"chat_id": chat_id, "action": "typing"},
+                    timeout=2.0,
+                )
     except Exception as e:
-        logger.warning(f"Could not send typing indicator: {e}")
+        logger.warning(f"Could not send immediate response: {e}")
 
     # 2. (Optional but Recommended) Deduplication Check
     # In a full implementation, you would check a Redis cache or a `processed_webhooks` table

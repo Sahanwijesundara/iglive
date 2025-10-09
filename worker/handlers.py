@@ -147,7 +147,7 @@ async def start_handler(session: Session, payload: dict):
             session.add(user)
             session.commit()
             
-            prefix_message = "🎉 *Welcome to InstaLive Pro!*\n\n"
+            prefix_message = "🎉 *Welcome to IGLiveZBot!*\n\n"
             prefix_message += f"Hey {username}! Great to have you here.\n\n"
             prefix_message += "🎁 *Starter Bonus:* +10 Points\n"
             if referred_by_id:
@@ -209,9 +209,6 @@ async def my_account_handler(session: Session, payload: dict):
             return
 
         helper = TelegramHelper()
-        
-        # Answer the callback query immediately
-        await helper.answer_callback_query(callback_query.get('id'))
 
         user = session.query(TelegramUser).filter_by(id=sender_id).first()
         if not user:
@@ -279,9 +276,6 @@ async def check_live_handler(session: Session, payload: dict):
             return
 
         helper = TelegramHelper()
-        
-        # Answer the callback query immediately
-        await helper.answer_callback_query(callback_query.get('id'))
 
         # Parse page number from callback_data (e.g., "check_live:2")
         callback_data = callback_query.get('data', 'check_live')
@@ -403,9 +397,6 @@ async def referrals_handler(session: Session, payload: dict):
             return
 
         helper = TelegramHelper()
-        
-        # Answer the callback query immediately
-        await helper.answer_callback_query(callback_query.get('id'))
 
         user = session.query(TelegramUser).filter_by(id=sender_id).first()
         if not user:
@@ -437,7 +428,7 @@ async def referrals_handler(session: Session, payload: dict):
         buttons = {
             "inline_keyboard": [
                 [
-                    {"text": "📤 Share Link", "url": f"https://t.me/share/url?url={referral_link}&text=Join me on InstaLive Pro!"}
+                    {"text": "📤 Share Link", "url": f"https://t.me/share/url?url={referral_link}&text=Join me on IGLiveZBot!"}
                 ],
                 [
                     {"text": "⬅️ Back to Menu", "callback_data": "back"}
@@ -467,14 +458,11 @@ async def help_handler(session: Session, payload: dict):
             return
 
         helper = TelegramHelper()
-        
-        # Answer the callback query immediately
-        await helper.answer_callback_query(callback_query.get('id'))
 
         help_text = "ℹ️ *HELP & INFO*\n"
         help_text += "━━━━━━━━━━━━━━━━━━━━\n\n"
         
-        help_text += "🤖 *What is InstaLive Pro?*\n"
+        help_text += "🤖 *What is IGLiveZBot?*\n"
         help_text += "Track Instagram live streams in real-time!\n\n"
         
         help_text += "📋 *How to use:*\n"
@@ -532,14 +520,11 @@ async def back_handler(session: Session, payload: dict):
 
         helper = TelegramHelper()
         
-        # Answer the callback query immediately
-        await helper.answer_callback_query(callback_query.get('id'))
-        
         # Build main menu text
         greeting = f"Hey {username}! 👋" if username else "Welcome back! 👋"
         
         menu_text = f"{greeting}\n\n"
-        menu_text += "⭐️ *InstaLive Pro* ⭐️\n"
+        menu_text += "⭐️ *IGLiveZBot* ⭐️\n"
         menu_text += "━━━━━━━━━━━━━━━━━━━━\n\n"
         menu_text += "🔴 *Track Instagram Live Streams*\n"
         menu_text += "     See who's live in real-time\n\n"
