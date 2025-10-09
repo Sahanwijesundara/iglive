@@ -49,11 +49,11 @@ async def update_live_status_in_db(session_factory):
                 update_all_offline = text("""
                     UPDATE insta_links
                     SET is_live = FALSE,
-                        last_updated = :now_str
+                        last_updated = :now
                     WHERE is_live = TRUE
                 """)
                 session.execute(update_all_offline, {
-                    'now_str': datetime.now(timezone.utc).isoformat()
+                    'now': datetime.now(timezone.utc)
                 })
                 
                 # 2. Then mark/insert users who are currently live
@@ -71,25 +71,23 @@ async def update_live_status_in_db(session_factory):
                             SET is_live = TRUE,
                                 last_live_at = :now,
                                 total_lives = COALESCE(total_lives, 0) + CASE WHEN is_live = FALSE THEN 1 ELSE 0 END,
-                                last_updated = :now_str
+                                last_updated = :now
                             WHERE username = :username
                         """)
                         session.execute(update_query, {
                             'username': username,
-                            'now': datetime.now(timezone.utc),
-                            'now_str': datetime.now(timezone.utc).isoformat()
+                            'now': datetime.now(timezone.utc)
                         })
                         logger.info(f"✅ @{username} is LIVE! (Viewers: {user['viewer_count']})")
                     else:
                         # Insert new user
                         insert_query = text("""
                             INSERT INTO insta_links (username, is_live, last_live_at, total_lives, last_updated, link)
-                            VALUES (:username, TRUE, :now, 1, :now_str, :link)
+                            VALUES (:username, TRUE, :now, 1, :now, :link)
                         """)
                         session.execute(insert_query, {
                             'username': username,
                             'now': datetime.now(timezone.utc),
-                            'now_str': datetime.now(timezone.utc).isoformat(),
                             'link': f'https://instagram.com/{username}'
                         })
                         logger.info(f"✅ NEW USER @{username} is LIVE! (Viewers: {user['viewer_count']})")

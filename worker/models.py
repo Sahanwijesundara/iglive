@@ -37,7 +37,7 @@ class InstaLink(Base):
     is_live = Column(Boolean, default=False)
     last_live_at = Column(DateTime)
     total_lives = Column(Integer, default=0)
-    last_updated = Column(Text)
+    last_updated = Column(DateTime, default=datetime.now)
     monetized_url = Column(Text)
     monetized_at = Column(DateTime)
     status = Column(Text, default='pending')
