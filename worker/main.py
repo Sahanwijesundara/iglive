@@ -22,6 +22,7 @@ from handlers import (
     help_handler,
     referrals_handler,
     settings_handler,
+    set_initial_language_handler,
     change_language_handler,
 )
 
@@ -79,6 +80,8 @@ async def process_job(job, session_factory):
                     await referrals_handler(session, payload)
                 elif callback_data == 'settings':
                     await settings_handler(session, payload)
+                elif callback_data.startswith('setlang:'):
+                    await set_initial_language_handler(session, payload)
                 elif callback_data.startswith('lang:'):
                     await change_language_handler(session, payload)
                 else:

@@ -131,7 +131,7 @@ async def start_handler(session: Session, payload: dict):
         username = from_user.get('first_name', 'there')
         
         if not user:
-            # New user registration
+            # New user registration - show language selection first
             referred_by_id = None
             text = message.get('text', '')
             if text and len(text.split()) > 1:
@@ -142,9 +142,10 @@ async def start_handler(session: Session, payload: dict):
                 except (ValueError, IndexError):
                     referred_by_id = None
 
-            # Detect user's language from Telegram
+            # Detect user's language from Telegram as default
             user_lang = detect_language(from_user.get('language_code', 'en'))
 
+            # Create user with temporary language (will be confirmed by user)
             user = TelegramUser(
                 id=sender_id,
                 username=from_user.get('username'),
@@ -157,15 +158,9 @@ async def start_handler(session: Session, payload: dict):
             session.add(user)
             session.commit()
             
-            prefix_message = get_text('welcome', user_lang) + "\n\n"
-            prefix_message += f"Hey {username}! Great to have you here.\n\n"
-            prefix_message += get_text('starter_bonus', user_lang) + "\n"
-            if referred_by_id:
-                prefix_message += get_text('referral_bonus', user_lang) + "\n"
-            prefix_message += "\n"
-            
-            logger.info(f"New user created: {user.id} (@{user.username}) with language: {user_lang}")
+            logger.info(f"New user created: {user.id} (@{user.username}) with detected language: {user_lang}")
 
+            # Award referral points
             if referred_by_id:
                 referrer = session.query(TelegramUser).filter_by(id=referred_by_id).first()
                 if referrer:
@@ -179,6 +174,30 @@ async def start_handler(session: Session, payload: dict):
                     
                     await send_user_feedback(referrer.id, referrer_msg)
                     logger.info(f"Awarded 10 referral points to {referrer.id}")
+
+            # Show language selection menu for new users
+            welcome_text = "🎉 *Welcome to IGLiveZBot!*\n\n"
+            welcome_text += f"Hey {username}! Great to have you here.\n\n"
+            welcome_text += "🌍 *Please select your preferred language:*"
+            
+            # Create language selection buttons (2 per row)
+            lang_buttons = []
+            languages = list(LANGUAGE_NAMES.items())
+            for i in range(0, len(languages), 2):
+                row = []
+                for j in range(2):
+                    if i + j < len(languages):
+                        lang_code, lang_name = languages[i + j]
+                        # Highlight detected language
+                        display_name = f"✓ {lang_name}" if lang_code == user_lang else lang_name
+                        row.append({"text": display_name, "callback_data": f"setlang:{lang_code}"})
+                lang_buttons.append(row)
+            
+            buttons = {"inline_keyboard": lang_buttons}
+            
+            await helper.send_message(sender_id, welcome_text, parse_mode="Markdown", reply_markup=buttons)
+            logger.info(f"Sent language selection to new user {user.id}")
+            return  # Don't show main menu yet
 
         elif is_new_day_for_user(user):
             # Daily reset
@@ -804,8 +823,55 @@ async def settings_handler(session: Session, payload: dict):
         raise
 
 
+async def set_initial_language_handler(session: Session, payload: dict):
+    """Handle initial language selection for new users."""
+    try:
+        callback_query = payload.get('callback_query', {})
+        from_user = callback_query.get('from', {})
+        sender_id = from_user.get('id')
+        username = from_user.get('first_name', 'there')
+        callback_data = callback_query.get('data', '')
+
+        if not sender_id or not callback_data.startswith('setlang:'):
+            return
+
+        # Extract language code from callback_data (e.g., "setlang:es" -> "es")
+        selected_lang = callback_data.split(':')[1]
+        
+        if selected_lang not in LANGUAGE_NAMES:
+            logger.warning(f"Invalid language code: {selected_lang}")
+            return
+
+        user = session.query(TelegramUser).filter_by(id=sender_id).first()
+        if not user:
+            await send_user_feedback(sender_id, "❌ Please use /start first to register.")
+            return
+
+        # Update user's language
+        user.language = selected_lang
+        session.commit()
+        
+        logger.info(f"User {user.id} set initial language to {selected_lang}")
+        
+        # Show welcome message with bonuses in selected language
+        prefix_message = get_text('welcome', selected_lang) + "\n\n"
+        prefix_message += f"Hey {username}! Great to have you here.\n\n"
+        prefix_message += get_text('starter_bonus', selected_lang) + "\n"
+        if user.referred_by_id:
+            prefix_message += get_text('referral_bonus', selected_lang) + "\n"
+        prefix_message += "\n"
+        
+        # Show main menu
+        await send_main_menu(user.id, prefix_message, username, selected_lang)
+
+    except Exception as e:
+        logger.error(f"Error in set_initial_language_handler: {e}", exc_info=True)
+        session.rollback()
+        raise
+
+
 async def change_language_handler(session: Session, payload: dict):
-    """Change user's language preference."""
+    """Change user's language preference from settings."""
     try:
         callback_query = payload.get('callback_query', {})
         from_user = callback_query.get('from', {})
