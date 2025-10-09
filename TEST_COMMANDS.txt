@@ -1,0 +1,151 @@
+# Quick Test Commands - Copy & Paste
+
+# ============================================
+# STEP 1: Install Dependencies
+# ============================================
+cd "c:\IG live 2\Release 1.0\ig live(host ready)\worker"
+pip install -r requirements.txt
+
+
+# ============================================
+# STEP 2: Create .env File
+# ============================================
+# Create a file named .env in the root directory with:
+
+IG_USERNAME=your_instagram_username
+IG_PASSWORD=your_instagram_password
+DATABASE_URL=your_postgresql_url
+BOT_TOKEN=your_telegram_bot_token
+
+
+# ============================================
+# STEP 3: Run Simple Test (Recommended First)
+# ============================================
+cd "c:\IG live 2\Release 1.0\ig live(host ready)"
+python test_instagram_simple.py
+
+
+# ============================================
+# STEP 4: Run Full Test Suite (Optional)
+# ============================================
+python test_instagram_local.py
+
+
+# ============================================
+# STEP 5: Run Full Worker (Production Mode)
+# ============================================
+cd worker
+python main.py
+
+
+# ============================================
+# TROUBLESHOOTING COMMANDS
+# ============================================
+
+# Delete session file if login fails
+Remove-Item worker\instagram_session.json -ErrorAction SilentlyContinue
+
+# Test just the login
+python -c "import asyncio; import sys; sys.path.insert(0, 'worker'); from instagram_service import InstagramService; asyncio.run(InstagramService().login())"
+
+# Check if instagrapi is installed
+pip show instagrapi
+
+# Reinstall dependencies
+pip install --upgrade -r worker/requirements.txt
+
+
+# ============================================
+# DATABASE COMMANDS
+# ============================================
+
+# Add test users to track
+psql $env:DATABASE_URL -c "INSERT INTO insta_links (username, link) VALUES ('cristiano', 'https://instagram.com/cristiano'), ('leomessi', 'https://instagram.com/leomessi');"
+
+# Check who's live
+psql $env:DATABASE_URL -c "SELECT username, is_live, total_lives FROM insta_links WHERE is_live = true;"
+
+# See all tracked users
+psql $env:DATABASE_URL -c "SELECT username, is_live, total_lives, last_updated FROM insta_links ORDER BY last_updated DESC LIMIT 10;"
+
+
+# ============================================
+# EXPECTED OUTPUT (Success)
+# ============================================
+
+# When test_instagram_simple.py works:
+# ✅ Login successful!
+# 🔍 Checking if popular accounts are live...
+#    Checking @cristiano... ⚫ Offline
+#    Checking @leomessi... ⚫ Offline
+# ✅ Test complete! Instagram API is working.
+
+# When worker runs successfully:
+# INFO - Database engine created successfully.
+# INFO - Starting Instagram live checker background task...
+# INFO - Logging into Instagram as your_username...
+# INFO - Instagram login successful and session saved.
+# INFO - Checking live status for 5 Instagram users...
+# INFO - Live status check complete. 0/5 users are live.
+
+
+# ============================================
+# COMMON ERRORS & FIXES
+# ============================================
+
+# Error: "No module named 'instagrapi'"
+# Fix:
+pip install instagrapi
+
+# Error: "Login failed"
+# Fix:
+Remove-Item worker\instagram_session.json
+# Then try logging into Instagram manually from browser first
+
+# Error: "Challenge required"
+# Fix: Instagram wants verification
+# Login to Instagram manually, complete verification, then retry
+
+# Error: "DATABASE_URL not found"
+# Fix: Make sure .env file exists in root directory
+
+
+# ============================================
+# DEPLOYMENT TO RAILWAY
+# ============================================
+
+# Install Railway CLI
+npm install -g @railway/cli
+
+# Login and deploy
+railway login
+railway init
+railway up
+
+# Set environment variables on Railway dashboard:
+# IG_USERNAME=your_instagram_username
+# IG_PASSWORD=your_instagram_password
+# DATABASE_URL=your_postgresql_url
+# BOT_TOKEN=your_telegram_bot_token
+
+
+# ============================================
+# MONITORING
+# ============================================
+
+# Watch Railway logs
+railway logs
+
+# Check database live status
+psql $env:DATABASE_URL -c "SELECT COUNT(*) as live_count FROM insta_links WHERE is_live = true;"
+
+
+# ============================================
+# NOTES
+# ============================================
+
+# - No headless browser needed! instagrapi uses pure API
+# - Session persists in instagram_session.json
+# - Checks every 60 seconds by default
+# - Rate limit: ~200 requests/hour from Instagram
+# - Use a dedicated Instagram account, not personal

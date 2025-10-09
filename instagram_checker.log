@@ -1,0 +1,35 @@
+2025-10-08 13:41:05,528 - INFO - ============================================================
+2025-10-08 13:41:05,528 - INFO - LOCAL INSTAGRAM CHECKER - STARTED
+2025-10-08 13:41:05,528 - INFO - ============================================================
+2025-10-08 13:41:05,528 - INFO - This script checks Instagram and updates Railway database
+2025-10-08 13:41:05,529 - INFO - Press Ctrl+C to stop
+2025-10-08 13:41:05,529 - INFO - ============================================================
+2025-10-08 13:41:05,529 - INFO - Initializing Instagram service...
+2025-10-08 13:41:06,193 - INFO - Device fingerprint set to Samsung Galaxy S10
+2025-10-08 13:41:06,218 - INFO - Attempting to load existing Instagram session...
+2025-10-08 13:41:06,222 - INFO - Successfully loaded Instagram session. User ID: 44823616601
+2025-10-08 13:41:06,289 - INFO - Checking for live broadcasts...
+2025-10-08 13:41:14,071 - INFO - https://i.instagram.com/api/v1/feed/timeline/
+2025-10-08 13:41:14,898 - INFO - None [403] POST https://i.instagram.com/api/v1/feed/timeline/ (269.0.0.18.75, OnePlus 6T Dev)
+2025-10-08 13:41:22,376 - INFO - https://i.instagram.com/api/v1/feed/reels_tray/
+2025-10-08 13:41:22,967 - INFO - None [403] GET https://i.instagram.com/api/v1/feed/reels_tray/ (269.0.0.18.75, OnePlus 6T Dev)
+2025-10-08 13:41:22,982 - INFO - Found 0 live users
+2025-10-08 13:41:24,833 - INFO - ------------------------------------------------------------
+2025-10-08 13:43:29,847 - INFO - Checking for live broadcasts...
+2025-10-08 13:45:52,974 - INFO - ============================================================
+2025-10-08 13:45:52,974 - INFO - LOCAL INSTAGRAM CHECKER - STARTED
+2025-10-08 13:45:52,975 - INFO - ============================================================
+2025-10-08 13:45:52,975 - INFO - This script checks Instagram and updates Railway database
+2025-10-08 13:45:52,975 - INFO - Press Ctrl+C to stop
+2025-10-08 13:45:52,975 - INFO - ============================================================
+2025-10-08 13:45:52,975 - INFO - Initializing Instagram service...
+2025-10-08 13:45:53,617 - INFO - Device fingerprint set to Samsung Galaxy S10
+2025-10-08 13:45:53,618 - INFO - Attempting to load existing Instagram session...
+2025-10-08 13:45:53,619 - INFO - Successfully loaded Instagram session. User ID: 44823616601
+2025-10-08 13:45:53,659 - INFO - Checking for live broadcasts...
+2025-10-08 13:45:59,662 - INFO - https://i.instagram.com/api/v1/feed/timeline/
+2025-10-08 13:46:00,594 - INFO - None [403] POST https://i.instagram.com/api/v1/feed/timeline/ (269.0.0.18.75, OnePlus 6T Dev)
+2025-10-08 13:46:08,031 - INFO - https://i.instagram.com/api/v1/feed/reels_tray/
+2025-10-08 13:46:08,830 - INFO - None [403] GET https://i.instagram.com/api/v1/feed/reels_tray/ (269.0.0.18.75, OnePlus 6T Dev)
+2025-10-08 13:46:08,830 - INFO - Found 0 live users
+2025-10-08 13:46:10,881 - INFO - ------------------------------------------------------------
