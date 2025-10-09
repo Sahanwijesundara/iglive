@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from models import TelegramUser, ChatGroup
 from telegram_helper import TelegramHelper
 from instagram_checker import get_currently_live_users
+from translations import get_text, detect_language, LANGUAGE_NAMES
 
 logger = logging.getLogger(__name__)
 
@@ -46,34 +47,34 @@ async def send_user_feedback(user_id: int, message: str):
         logger.error(f"Failed to send feedback to {user_id}: {e}", exc_info=True)
 
 
-async def send_main_menu(user_id: int, prefix_message: str = "", username: str = None):
+async def send_main_menu(user_id: int, prefix_message: str = "", username: str = None, lang: str = 'en'):
     """Send the main menu to a user with improved UI."""
     try:
         # Greeting personalization
-        greeting = f"Hey {username}! 👋" if username else "Welcome back! 👋"
+        greeting = f"Hey {username}! 👋" if username else get_text('welcome_back', lang)
         
         menu_text = f"{prefix_message}{greeting}\n\n"
-        menu_text += "⭐️ *InstaLive Pro* ⭐️\n"
+        menu_text += get_text('bot_title', lang) + "\n"
         menu_text += "━━━━━━━━━━━━━━━━━━━━\n\n"
-        menu_text += "🔴 *Track Instagram Live Streams*\n"
-        menu_text += "     See who's live in real-time\n\n"
-        menu_text += "💎 *Smart Points System*\n"
-        menu_text += "     Get 10 free points daily\n\n"
-        menu_text += "🎁 *Refer & Earn*\n"
-        menu_text += "     10 bonus points per referral\n\n"
-        menu_text += "Choose an option below to continue:"
+        menu_text += get_text('track_ig_live', lang) + "\n"
+        menu_text += f"     {get_text('track_ig_desc', lang)}\n\n"
+        menu_text += get_text('smart_points', lang) + "\n"
+        menu_text += f"     {get_text('smart_points_desc', lang)}\n\n"
+        menu_text += get_text('refer_earn', lang) + "\n"
+        menu_text += f"     {get_text('refer_earn_desc', lang)}\n\n"
+        menu_text += get_text('choose_option', lang)
 
         buttons = {
             "inline_keyboard": [
                 [
-                    {"text": "🔴 Check Live", "callback_data": "check_live"}
+                    {"text": get_text('check_live', lang), "callback_data": "check_live"}
                 ],
                 [
-                    {"text": "👤 My Account", "callback_data": "my_account"},
-                    {"text": "🎁 Referrals", "callback_data": "referrals"}
+                    {"text": get_text('my_account', lang), "callback_data": "my_account"},
+                    {"text": get_text('referrals', lang), "callback_data": "referrals"}
                 ],
                 [
-                    {"text": "ℹ️ Help", "callback_data": "help"}
+                    {"text": get_text('help', lang), "callback_data": "help"}
                 ]
             ]
         }
@@ -140,25 +141,29 @@ async def start_handler(session: Session, payload: dict):
                 except (ValueError, IndexError):
                     referred_by_id = None
 
+            # Detect user's language from Telegram
+            user_lang = detect_language(from_user.get('language_code', 'en'))
+
             user = TelegramUser(
                 id=sender_id,
                 username=from_user.get('username'),
                 first_name=from_user.get('first_name'),
                 points=10,
                 last_seen=datetime.now(timezone.utc),
-                referred_by_id=referred_by_id
+                referred_by_id=referred_by_id,
+                language=user_lang
             )
             session.add(user)
             session.commit()
             
-            prefix_message = "🎉 *Welcome to IGLiveZBot!*\n\n"
+            prefix_message = get_text('welcome', user_lang) + "\n\n"
             prefix_message += f"Hey {username}! Great to have you here.\n\n"
-            prefix_message += "🎁 *Starter Bonus:* +10 Points\n"
+            prefix_message += get_text('starter_bonus', user_lang) + "\n"
             if referred_by_id:
-                prefix_message += "🔗 *Referral Bonus:* Applied\n"
+                prefix_message += get_text('referral_bonus', user_lang) + "\n"
             prefix_message += "\n"
             
-            logger.info(f"New user created: {user.id} (@{user.username})")
+            logger.info(f"New user created: {user.id} (@{user.username}) with language: {user_lang}")
 
             if referred_by_id:
                 referrer = session.query(TelegramUser).filter_by(id=referred_by_id).first()
@@ -180,9 +185,9 @@ async def start_handler(session: Session, payload: dict):
             user.last_seen = datetime.now(timezone.utc)
             session.commit()
             
-            prefix_message = "🌅 *Good Morning!*\n\n"
-            prefix_message += "Your daily points have been refreshed!\n\n"
-            prefix_message += "💎 *Daily Bonus:* +10 Points\n\n"
+            prefix_message = get_text('good_morning', user.language) + "\n\n"
+            prefix_message += get_text('daily_reset', user.language) + "\n\n"
+            prefix_message += get_text('daily_bonus', user.language) + "\n\n"
             
             logger.info(f"Reset daily points for user {user.id}")
         else:
@@ -190,7 +195,7 @@ async def start_handler(session: Session, payload: dict):
             user.last_seen = datetime.now(timezone.utc)
             session.commit()
 
-        await send_main_menu(user.id, prefix_message, username)
+        await send_main_menu(user.id, prefix_message, username, user.language)
 
     except Exception as e:
         logger.error(f"Error in start_handler for user {sender_id}: {e}", exc_info=True)

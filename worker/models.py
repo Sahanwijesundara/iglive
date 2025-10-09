@@ -86,6 +86,7 @@ class TelegramUser(Base):
     last_seen = Column(DateTime, default=datetime.now)
     subscription_end = Column(DateTime, nullable=True)
     referred_by_id = Column(BIGINT, ForeignKey('telegram_users.id'), nullable=True)
+    language = Column(String, default='en', nullable=False)  # Language preference
     user_bots = relationship("UserBot", back_populates="owner")
     referrals = relationship("TelegramUser", backref="referrer", remote_side=[id])
 
