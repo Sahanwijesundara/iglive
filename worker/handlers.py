@@ -512,3 +512,164 @@ async def join_request_handler(session: Session, payload: dict):
     except Exception as e:
         logger.error(f"Error in join_request_handler: {e}", exc_info=True)
         raise
+
+
+async def init_handler(session: Session, payload: dict):
+    """
+    Handles the /init command sent in a group chat.
+    Registers the group and the admin.
+    """
+    try:
+        message = payload.get('message', {})
+        chat = message.get('chat', {})
+        from_user = message.get('from', {})
+        
+        chat_id = chat.get('id')
+        user_id = from_user.get('id')
+        chat_title = chat.get('title')
+
+        if not chat_id or not user_id:
+            logger.error("Could not determine chat_id or user_id from /init payload.")
+            return
+
+        # Check if the user is an admin in the group
+        helper = TelegramHelper()
+        is_admin = await helper.is_user_admin(chat_id, user_id)
+        if not is_admin:
+            await helper.send_message(chat_id, "❌ You must be an admin of this group to use the /init command.")
+            logger.warning(f"User {user_id} tried to /init in {chat_id} but is not an admin.")
+            return
+
+        # Check if the bot itself is an admin
+        bot_is_admin = await helper.is_bot_admin(chat_id)
+        if not bot_is_admin:
+            await helper.send_message(chat_id, "⚠️ This bot must be an administrator in this group to function correctly.")
+            logger.warning(f"Bot is not an admin in chat {chat_id}. Cannot complete /init.")
+            return
+
+        # Register the group and admin
+        group = session.query(ChatGroup).filter_by(chat_id=str(chat_id)).first()
+        if group:
+            group.admin_user_id = user_id
+            group.is_active = True
+            group.title = chat_title
+        else:
+            group = ChatGroup(
+                chat_id=str(chat_id),
+                admin_user_id=user_id,
+                title=chat_title,
+                is_active=True
+            )
+            session.add(group)
+        
+        session.commit()
+        
+        success_msg = "✅ *Group Registered Successfully!*\n\n"
+        success_msg += f"📱 *Group:* {chat_title}\n"
+        success_msg += f"👤 *Admin:* {from_user.get('first_name')}\n\n"
+        success_msg += "🎉 This group is now active for broadcasts!"
+        
+        logger.info(f"Group {chat_id} ('{chat_title}') initialized/updated by admin {user_id}.")
+        await helper.send_message(chat_id, success_msg, parse_mode="Markdown")
+
+    except Exception as e:
+        logger.error(f"Error in init_handler for chat {chat_id}: {e}", exc_info=True)
+        session.rollback()
+        raise
+
+
+async def activate_handler(session: Session, payload: dict):
+    """
+    Handles the /activate command to grant a user unlimited points.
+    """
+    try:
+        message = payload.get('message', {})
+        chat = message.get('chat', {})
+        from_user = message.get('from', {})
+        
+        chat_id = chat.get('id')
+        user_id = from_user.get('id')
+
+        if not chat_id or not user_id:
+            logger.error("Could not determine chat_id or user_id from /activate payload.")
+            return
+
+        # Find the group in the database
+        group = session.query(ChatGroup).filter_by(chat_id=str(chat_id), is_active=True).first()
+        if not group:
+            await send_user_feedback(user_id, "❌ This group is not registered. Please use /init in the group first.")
+            return
+
+        # Check if the user is the registered admin of this group
+        if group.admin_user_id != user_id:
+            await send_user_feedback(user_id, "❌ You are not the registered admin for this group.")
+            return
+            
+        # Grant unlimited points to the user
+        user = session.query(TelegramUser).filter_by(id=user_id).first()
+        if not user:
+            logger.warning(f"User {user_id} used /activate but was not in the users table. Creating new entry.")
+            user = TelegramUser(id=user_id, username=from_user.get('username'), first_name=from_user.get('first_name'))
+            session.add(user)
+
+        # Set subscription_end to a far-future date to represent "unlimited"
+        user.subscription_end = datetime(2099, 12, 31, tzinfo=timezone.utc)
+        session.commit()
+
+        premium_msg = "🎊 *PREMIUM ACTIVATED!*\n\n"
+        premium_msg += "💎 You now have *UNLIMITED* access!\n\n"
+        premium_msg += "✨ *Benefits:*\n"
+        premium_msg += "  • Unlimited live checks\n"
+        premium_msg += "  • No daily point limits\n"
+        premium_msg += "  • Priority support\n\n"
+        premium_msg += "🔥 Enjoy your premium experience!"
+
+        logger.info(f"User {user_id} has been granted unlimited points via group {chat_id}.")
+        await send_user_feedback(user_id, premium_msg)
+
+    except Exception as e:
+        logger.error(f"Error in activate_handler for user {user_id}: {e}", exc_info=True)
+        session.rollback()
+        raise
+
+
+async def broadcast_message_handler(session: Session, payload: dict):
+    """
+    Handles a broadcast_message job, sending a message to all active groups.
+    """
+    try:
+        message_text = payload.get('text')
+        if not message_text:
+            logger.error("Broadcast job is missing 'text' in payload.")
+            return
+
+        # Fetch all active groups
+        active_groups = session.query(ChatGroup).filter_by(is_active=True).all()
+        
+        if not active_groups:
+            logger.info("No active groups to broadcast to.")
+            return
+
+        helper = TelegramHelper()
+        success_count = 0
+        fail_count = 0
+        
+        for group in active_groups:
+            try:
+                chat_id = int(group.chat_id)
+                await helper.send_message(chat_id, message_text, parse_mode="Markdown")
+                logger.info(f"Broadcasted message to group {chat_id}.")
+                success_count += 1
+                # Rate limiting
+                await asyncio.sleep(1)
+            except ValueError:
+                logger.warning(f"Could not convert chat_id '{group.chat_id}' to int. Skipping.")
+                fail_count += 1
+            except Exception as e:
+                logger.error(f"Failed to broadcast to group {group.chat_id}: {e}")
+                fail_count += 1
+
+        logger.info(f"Broadcast complete: {success_count} successful, {fail_count} failed")
+
+    except Exception as e:
+        logger.error(f"Error in broadcast_message_handler: {e}", exc_info=True)
