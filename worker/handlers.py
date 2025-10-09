@@ -256,7 +256,7 @@ async def my_account_handler(session: Session, payload: dict):
 
 
 async def check_live_handler(session: Session, payload: dict):
-    """Displays currently live Instagram users with improved UI."""
+    """Displays currently live Instagram users with pagination."""
     try:
         callback_query = payload.get('callback_query', {})
         from_user = callback_query.get('from', {})
@@ -266,15 +266,24 @@ async def check_live_handler(session: Session, payload: dict):
             logger.error("Could not determine sender_id from payload.")
             return
 
+        # Parse page number from callback_data (e.g., "check_live:2")
+        callback_data = callback_query.get('data', 'check_live')
+        page = 1
+        if ':' in callback_data:
+            try:
+                page = int(callback_data.split(':')[1])
+            except (ValueError, IndexError):
+                page = 1
+
         user = session.query(TelegramUser).filter_by(id=sender_id).first()
         if not user:
             logger.warning(f"User {sender_id} not found for check_live.")
             await send_user_feedback(sender_id, "❌ Please use /start first to register.")
             return
 
-        # Check points/subscription
+        # Check points/subscription (only deduct on first page)
         is_unlimited = user.subscription_end and user.subscription_end > datetime.now(timezone.utc)
-        if not is_unlimited:
+        if not is_unlimited and page == 1:
             if user.points > 0:
                 user.points -= 1
                 session.commit()
@@ -294,34 +303,37 @@ async def check_live_handler(session: Session, payload: dict):
         # Get live users
         live_users = await get_currently_live_users(session)
         
+        # Pagination setup
+        PER_PAGE = 10
+        total_users = len(live_users)
+        total_pages = max(1, (total_users + PER_PAGE - 1) // PER_PAGE)
+        page = max(1, min(page, total_pages))  # Clamp page to valid range
+        
+        start_idx = (page - 1) * PER_PAGE
+        end_idx = start_idx + PER_PAGE
+        page_users = live_users[start_idx:end_idx]
+        
         # Format the live users message
         if live_users:
             live_message = "🔴 *LIVE NOW*\n"
             live_message += "━━━━━━━━━━━━━━━━━━━━\n\n"
-            live_message += f"Found *{len(live_users)}* live stream{'s' if len(live_users) != 1 else ''}!\n\n"
             
-            # Create inline buttons for each live user (max 10)
-            live_buttons = []
-            for idx, user_data in enumerate(live_users[:10], 1):
+            if total_pages > 1:
+                live_message += f"📄 Page {page}/{total_pages} • {total_users} total streams\n\n"
+            else:
+                live_message += f"Found *{total_users}* live stream{'s' if total_users != 1 else ''}!\n\n"
+            
+            for user_data in page_users:
                 username = user_data['username']
-                total_lives = user_data.get('total_lives', 0)
                 link = user_data.get('link', f"https://instagram.com/{username.lstrip('@')}")
                 
-                live_message += f"▸ 🔴 *{username}*\n"
-                live_message += f"   📊 {total_lives} total lives\n\n"
-                
-                # Add button for this user
-                live_buttons.append([{"text": f"📱 Watch {username}", "url": link}])
-            
-            if len(live_users) > 10:
-                live_message += f"_...and {len(live_users) - 10} more!_\n\n"
+                live_message += f"▸ 🔴 *[{username}]({link})*\n"
         else:
             live_message = "🔴 *LIVE NOW*\n"
             live_message += "━━━━━━━━━━━━━━━━━━━━\n\n"
             live_message += "😴 No one is live right now.\n\n"
             live_message += "💡 Live streams are tracked in real-time.\n"
             live_message += "   Check back in a few minutes!\n"
-            live_buttons = []
         
         # Add points/subscription info
         live_message += "\n━━━━━━━━━━━━━━━━━━━━\n"
@@ -332,17 +344,25 @@ async def check_live_handler(session: Session, payload: dict):
         
         live_message += f"⏰ *Updated:* {datetime.now(timezone.utc).strftime('%I:%M %p UTC')}"
         
-        # Build buttons - live user buttons + refresh/back
+        # Build pagination buttons
         helper = TelegramHelper()
-        button_rows = live_buttons if live_buttons else []
-        button_rows.extend([
-            [{"text": "🔄 Refresh", "callback_data": "check_live"}],
-            [{"text": "⬅️ Back to Menu", "callback_data": "back"}]
-        ])
+        button_rows = []
+        
+        if total_pages > 1:
+            nav_buttons = []
+            if page > 1:
+                nav_buttons.append({"text": "⬅️ Previous", "callback_data": f"check_live:{page-1}"})
+            if page < total_pages:
+                nav_buttons.append({"text": "Next ➡️", "callback_data": f"check_live:{page+1}"})
+            if nav_buttons:
+                button_rows.append(nav_buttons)
+        
+        button_rows.append([{"text": "🔄 Refresh", "callback_data": "check_live"}])
+        button_rows.append([{"text": "⬅️ Back to Menu", "callback_data": "back"}])
         
         buttons = {"inline_keyboard": button_rows}
         await helper.send_message(sender_id, live_message, parse_mode="Markdown", reply_markup=buttons)
-        logger.info(f"User {user.id} checked for live users. Found {len(live_users)} live. Points remaining: {user.points}")
+        logger.info(f"User {user.id} checked live users page {page}/{total_pages}. Total: {total_users} live. Points: {user.points}")
 
     except Exception as e:
         logger.error(f"Error in check_live_handler for user {sender_id}: {e}", exc_info=True)
