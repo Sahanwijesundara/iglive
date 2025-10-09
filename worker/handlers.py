@@ -20,6 +20,9 @@ BOT_API_HASH = os.environ.get('BOT_API_HASH')
 REQUIRED_GROUP_URL = "https://t.me/+FBDgBcLD1C5jN2Jk"
 REQUIRED_GROUP_ID = -1002891494486
 
+# Feature flag: Set to False to disable group membership requirement
+REQUIRE_GROUP_MEMBERSHIP = False
+
 
 def is_new_day_for_user(user: TelegramUser) -> bool:
     """Check if it's a new day for the user considering timezone."""
@@ -96,28 +99,29 @@ async def start_handler(session: Session, payload: dict):
 
         # Group membership check with improved UI
         helper = TelegramHelper()
-        is_member = await helper.is_user_in_group(REQUIRED_GROUP_ID, sender_id)
-        if not is_member:
-            logger.info(f"User {sender_id} is not in the required group. Sending join prompt.")
-            join_text = "🚫 *Access Required*\n\n"
-            join_text += "To use this bot, you need to join our community group first.\n\n"
-            join_text += "✨ *Benefits of joining:*\n"
-            join_text += "  • Track Instagram lives 24/7\n"
-            join_text += "  • Get instant notifications\n"
-            join_text += "  • Daily free points\n"
-            join_text += "  • Exclusive tips & tricks\n\n"
-            join_text += "👇 Click the button below to join now!"
-            
-            join_button = {
-                "inline_keyboard": [[{"text": "✅ Join Community Group", "url": REQUIRED_GROUP_URL}]]
-            }
-            await helper.send_message(
-                sender_id,
-                join_text,
-                parse_mode="Markdown",
-                reply_markup=join_button
-            )
-            return
+        if REQUIRE_GROUP_MEMBERSHIP:
+            is_member = await helper.is_user_in_group(REQUIRED_GROUP_ID, sender_id)
+            if not is_member:
+                logger.info(f"User {sender_id} is not in the required group. Sending join prompt.")
+                join_text = "🚫 *Access Required*\n\n"
+                join_text += "To use this bot, you need to join our community group first.\n\n"
+                join_text += "✨ *Benefits of joining:*\n"
+                join_text += "  • Track Instagram lives 24/7\n"
+                join_text += "  • Get instant notifications\n"
+                join_text += "  • Daily free points\n"
+                join_text += "  • Exclusive tips & tricks\n\n"
+                join_text += "👇 Click the button below to join now!"
+                
+                join_button = {
+                    "inline_keyboard": [[{"text": "✅ Join Community Group", "url": REQUIRED_GROUP_URL}]]
+                }
+                await helper.send_message(
+                    sender_id,
+                    join_text,
+                    parse_mode="Markdown",
+                    reply_markup=join_button
+                )
+                return
 
         user = session.query(TelegramUser).filter_by(id=sender_id).first()
         
