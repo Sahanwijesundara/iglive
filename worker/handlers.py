@@ -50,16 +50,14 @@ async def send_main_menu(user_id: int, prefix_message: str = "", username: str =
         greeting = f"Hey {username}! 👋" if username else "Welcome back! 👋"
         
         menu_text = f"{prefix_message}{greeting}\n\n"
-        menu_text += "╔═══════════════════════════╗\n"
-        menu_text += "║  🌟 *InstaLive Pro* 🌟  ║\n"
-        menu_text += "╚═══════════════════════════╝\n\n"
+        menu_text += "⭐️ *InstaLive Pro* ⭐️\n"
+        menu_text += "━━━━━━━━━━━━━━━━━━━━\n\n"
         menu_text += "🔴 *Track Instagram Live Streams*\n"
-        menu_text += "   See who's live in real-time\n\n"
+        menu_text += "     See who's live in real-time\n\n"
         menu_text += "💎 *Smart Points System*\n"
-        menu_text += "   Get 10 free points daily\n\n"
+        menu_text += "     Get 10 free points daily\n\n"
         menu_text += "🎁 *Refer & Earn*\n"
-        menu_text += "   Get 10 bonus points per referral\n\n"
-        menu_text += "┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n"
+        menu_text += "     10 bonus points per referral\n\n"
         menu_text += "Choose an option below to continue:"
 
         buttons = {
@@ -216,29 +214,27 @@ async def my_account_handler(session: Session, payload: dict):
         is_unlimited = user.subscription_end and user.subscription_end > datetime.now(timezone.utc)
         
         # Create visual account card
-        account_text = "┏━━━━━━━━━━━━━━━━━━━━━━━┓\n"
-        account_text += "┃  👤 *YOUR ACCOUNT*  ┃\n"
-        account_text += "┗━━━━━━━━━━━━━━━━━━━━━━━┛\n\n"
+        account_text = "👤 *YOUR ACCOUNT*\n"
+        account_text += "━━━━━━━━━━━━━━━━━━━━\n\n"
         
         account_text += f"👤 *Name:* {user.first_name}\n"
         account_text += f"🆔 *Username:* @{user.username or 'Not set'}\n"
         account_text += f"🔢 *User ID:* `{user.id}`\n"
         account_text += f"📅 *Joined:* {user.last_seen.strftime('%b %d, %Y') if user.last_seen else 'Unknown'}\n\n"
         
-        account_text += "┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n\n"
-        
         if is_unlimited:
-            account_text += "💎 *PREMIUM STATUS*\n\n"
+            account_text += "💎 *PREMIUM STATUS*\n"
+            account_text += "━━━━━━━━━━━━━━━━━━━━\n"
             account_text += f"✅ Unlimited Checks\n"
             account_text += f"📅 Valid Until: {user.subscription_end.strftime('%b %d, %Y')}\n"
         else:
-            account_text += "💰 *POINTS BALANCE*\n\n"
+            account_text += "💰 *POINTS BALANCE*\n"
+            account_text += "━━━━━━━━━━━━━━━━━━━━\n"
             account_text += f"💎 Current: *{user.points} points*\n"
             account_text += f"🔄 Resets: Daily at midnight UTC\n"
             account_text += f"✨ Cost: 1 point per check\n"
         
-        account_text += "\n┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n\n"
-        account_text += "💡 *Tip:* Refer friends to earn bonus points!"
+        account_text += "\n💡 *Tip:* Refer friends to earn bonus points!"
         
         helper = TelegramHelper()
         buttons = {
@@ -300,54 +296,51 @@ async def check_live_handler(session: Session, payload: dict):
         
         # Format the live users message
         if live_users:
-            live_message = "┏━━━━━━━━━━━━━━━━━━━━━━━━┓\n"
-            live_message += "┃  🔴 *LIVE NOW*  ┃\n"
-            live_message += "┗━━━━━━━━━━━━━━━━━━━━━━━━┛\n\n"
+            live_message = "🔴 *LIVE NOW*\n"
+            live_message += "━━━━━━━━━━━━━━━━━━━━\n\n"
             live_message += f"Found *{len(live_users)}* live stream{'s' if len(live_users) != 1 else ''}!\n\n"
             
+            # Create inline buttons for each live user (max 10)
+            live_buttons = []
             for idx, user_data in enumerate(live_users[:10], 1):
                 username = user_data['username']
                 total_lives = user_data.get('total_lives', 0)
                 link = user_data.get('link', f"https://instagram.com/{username.lstrip('@')}")
                 
-                live_message += f"┌─ Stream #{idx}\n"
-                live_message += f"│ 🔴 *{username}*\n"
-                live_message += f"│ 📊 Total Lives: {total_lives}\n"
-                live_message += f"│ 🔗 [Watch Live]({link})\n"
-                live_message += "└───────────────\n\n"
+                live_message += f"▸ 🔴 *{username}*\n"
+                live_message += f"   📊 {total_lives} total lives\n\n"
+                
+                # Add button for this user
+                live_buttons.append([{"text": f"📱 Watch {username}", "url": link}])
             
             if len(live_users) > 10:
                 live_message += f"_...and {len(live_users) - 10} more!_\n\n"
-            
-            live_message += "┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n"
         else:
-            live_message = "┏━━━━━━━━━━━━━━━━━━━━━━━━┓\n"
-            live_message += "┃  🔴 *LIVE NOW*  ┃\n"
-            live_message += "┗━━━━━━━━━━━━━━━━━━━━━━━━┛\n\n"
+            live_message = "🔴 *LIVE NOW*\n"
+            live_message += "━━━━━━━━━━━━━━━━━━━━\n\n"
             live_message += "😴 No one is live right now.\n\n"
-            live_message += "💡 *Tip:* Live streams are tracked\n"
-            live_message += "   in real-time. Check back soon!\n\n"
-            live_message += "┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n"
+            live_message += "💡 Live streams are tracked in real-time.\n"
+            live_message += "   Check back in a few minutes!\n"
+            live_buttons = []
         
         # Add points/subscription info
+        live_message += "\n━━━━━━━━━━━━━━━━━━━━\n"
         if is_unlimited:
-            live_message += f"\n💎 *Status:* Premium (Unlimited)\n"
+            live_message += f"💎 *Status:* Premium (Unlimited)\n"
         else:
-            live_message += f"\n💰 *Points Left:* {user.points}\n"
+            live_message += f"💰 *Points Left:* {user.points}\n"
         
         live_message += f"⏰ *Updated:* {datetime.now(timezone.utc).strftime('%I:%M %p UTC')}"
         
+        # Build buttons - live user buttons + refresh/back
         helper = TelegramHelper()
-        buttons = {
-            "inline_keyboard": [
-                [
-                    {"text": "🔄 Refresh", "callback_data": "check_live"}
-                ],
-                [
-                    {"text": "⬅️ Back to Menu", "callback_data": "back"}
-                ]
-            ]
-        }
+        button_rows = live_buttons if live_buttons else []
+        button_rows.extend([
+            [{"text": "🔄 Refresh", "callback_data": "check_live"}],
+            [{"text": "⬅️ Back to Menu", "callback_data": "back"}]
+        ])
+        
+        buttons = {"inline_keyboard": button_rows}
         await helper.send_message(sender_id, live_message, parse_mode="Markdown", reply_markup=buttons)
         logger.info(f"User {user.id} checked for live users. Found {len(live_users)} live. Points remaining: {user.points}")
 
@@ -376,16 +369,14 @@ async def referrals_handler(session: Session, payload: dict):
         # Count referrals
         referral_count = session.query(TelegramUser).filter_by(referred_by_id=user.id).count()
         
-        referral_text = "┏━━━━━━━━━━━━━━━━━━━━━━━┓\n"
-        referral_text += "┃  🎁 *REFERRALS*  ┃\n"
-        referral_text += "┗━━━━━━━━━━━━━━━━━━━━━━━┛\n\n"
+        referral_text = "🎁 *REFERRALS*\n"
+        referral_text += "━━━━━━━━━━━━━━━━━━━━\n\n"
         
         referral_text += f"👥 *Total Referrals:* {referral_count}\n"
         referral_text += f"💰 *Points Earned:* {referral_count * 10}\n\n"
         
-        referral_text += "┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n\n"
-        
-        referral_text += "💡 *How it works:*\n\n"
+        referral_text += "💡 *How it works:*\n"
+        referral_text += "━━━━━━━━━━━━━━━━━━━━\n"
         referral_text += "1️⃣ Share your link\n"
         referral_text += "2️⃣ Friend joins via link\n"
         referral_text += "3️⃣ You both get +10 points!\n\n"
@@ -425,28 +416,25 @@ async def help_handler(session: Session, payload: dict):
         if not sender_id:
             return
 
-        help_text = "┏━━━━━━━━━━━━━━━━━━━━━━━┓\n"
-        help_text += "┃  ℹ️ *HELP & INFO*  ┃\n"
-        help_text += "┗━━━━━━━━━━━━━━━━━━━━━━━┛\n\n"
+        help_text = "ℹ️ *HELP & INFO*\n"
+        help_text += "━━━━━━━━━━━━━━━━━━━━\n\n"
         
         help_text += "🤖 *What is InstaLive Pro?*\n"
         help_text += "Track Instagram live streams in real-time!\n\n"
         
-        help_text += "┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n\n"
-        
-        help_text += "📋 *How to use:*\n\n"
+        help_text += "📋 *How to use:*\n"
+        help_text += "━━━━━━━━━━━━━━━━━━━━\n"
         help_text += "🔴 *Check Live* - See who's streaming\n"
-        help_text += "   Costs 1 point per check\n\n"
+        help_text += "     Costs 1 point per check\n\n"
         
         help_text += "👤 *My Account* - View your stats\n"
-        help_text += "   Check points & subscription\n\n"
+        help_text += "     Check points & subscription\n\n"
         
         help_text += "🎁 *Referrals* - Earn bonus points\n"
-        help_text += "   +10 points per friend\n\n"
-        
-        help_text += "┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈┈\n\n"
+        help_text += "     +10 points per friend\n\n"
         
         help_text += "💎 *Points System:*\n"
+        help_text += "━━━━━━━━━━━━━━━━━━━━\n"
         help_text += "  • Start with 10 free points\n"
         help_text += "  • Resets daily at midnight UTC\n"
         help_text += "  • Earn more via referrals\n\n"
