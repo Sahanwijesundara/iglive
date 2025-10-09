@@ -83,14 +83,18 @@ def handle_webhook():
 
     # Send immediate typing indicator for better UX
     try:
+        chat_id = None
         if 'message' in update_data:
             chat_id = update_data['message'].get('chat', {}).get('id')
-            if chat_id:
-                httpx.post(
-                    f"https://api.telegram.org/bot{os.environ.get('BOT_TOKEN')}/sendChatAction",
-                    json={"chat_id": chat_id, "action": "typing"},
-                    timeout=2.0,
-                )
+        elif 'callback_query' in update_data:
+            chat_id = update_data['callback_query'].get('message', {}).get('chat', {}).get('id')
+        
+        if chat_id:
+            httpx.post(
+                f"https://api.telegram.org/bot{os.environ.get('BOT_TOKEN')}/sendChatAction",
+                json={"chat_id": chat_id, "action": "typing"},
+                timeout=2.0,
+            )
     except Exception as e:
         logger.warning(f"Could not send typing indicator: {e}")
 
