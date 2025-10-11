@@ -120,12 +120,13 @@ async def worker_main_loop(session_factory, run_once=False):
             # --- 1. Fetch and Lock a Job ---
             select_query = text("""
                 SELECT * FROM jobs
-                WHERE status = 'pending'
+                WHERE status = 'pending' 
+                  AND bot_token = :bot_token
                 ORDER BY created_at
                 LIMIT 1
                 FOR UPDATE SKIP LOCKED
             """)
-            result = session.execute(select_query).fetchone()
+            result = session.execute(select_query, {'bot_token': os.environ.get('BOT_TOKEN')}).fetchone()
 
             if result:
                 job_to_process = dict(result._mapping)

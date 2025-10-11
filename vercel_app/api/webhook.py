@@ -13,6 +13,7 @@ from sqlalchemy.pool import NullPool
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# --- Flask App Initialization ---
 app = Flask(__name__)
 
 # --- Database Connection ---
@@ -60,15 +61,18 @@ except Exception as e:
 def handle_webhook():
     """
     Vercel Serverless Function to handle Telegram webhooks.
-    - Receives a webhook from Telegram.
-    - Inserts the payload into a 'jobs' table for background processing.
-    - Returns an immediate 200 OK to Telegram.
+    Uses the X-Telegram-Bot-Token header to route updates to the
+    correct handler for each bot.
     """
     if not engine:
         logger.error("Database engine is not available. Cannot process webhook.")
         return jsonify({"status": "error", "message": "Database connection failed"}), 500
 
-    # 1. Receive and validate the webhook data
+    incoming_token = request.headers.get('X-Telegram-Bot-Token')
+    if not incoming_token:
+        logger.warning("Missing bot token header on webhook request")
+        return jsonify({"status": "error", "message": "Unauthorized"}), 403
+
     try:
         update_data = request.get_json()
         if not update_data or 'update_id' not in update_data:
@@ -78,14 +82,25 @@ def handle_webhook():
         logger.error(f"Error decoding JSON payload: {e}", exc_info=True)
         return jsonify({"status": "error", "message": "Bad request"}), 400
 
+    if incoming_token == os.environ.get('TGMS_BOT_TOKEN'):
+        return _handle_tgms_update(update_data)
+
+    if incoming_token == os.environ.get('BOT_TOKEN'):
+        return _handle_main_update(update_data)
+
+    logger.warning(f"Rejected webhook from unauthorized bot token: {incoming_token}")
+    return jsonify({"status": "error", "message": "Unauthorized"}), 403
+
+
+def _handle_main_update(update_data: dict):
+    """Handle updates for the main Telegram bot."""
     update_id = update_data.get('update_id')
-    logger.info(f"Received webhook with update_id: {update_id}")
+    logger.info(f"Received main bot webhook with update_id: {update_id}")
 
     # Send immediate responses for better UX
     try:
         bot_token = os.environ.get('BOT_TOKEN')
-        
-        # Answer callback query immediately to remove button highlight
+
         if 'callback_query' in update_data:
             callback_query_id = update_data['callback_query'].get('id')
             if callback_query_id:
@@ -94,8 +109,7 @@ def handle_webhook():
                     json={"callback_query_id": callback_query_id},
                     timeout=2.0,
                 )
-            
-            # Send typing indicator for callback queries
+
             chat_id = update_data['callback_query'].get('message', {}).get('chat', {}).get('id')
             if chat_id:
                 httpx.post(
@@ -103,8 +117,7 @@ def handle_webhook():
                     json={"chat_id": chat_id, "action": "typing"},
                     timeout=2.0,
                 )
-        
-        # Send typing indicator for regular messages
+
         elif 'message' in update_data:
             chat_id = update_data['message'].get('chat', {}).get('id')
             if chat_id:
@@ -116,19 +129,17 @@ def handle_webhook():
     except Exception as e:
         logger.warning(f"Could not send immediate response: {e}")
 
-    # 2. (Optional but Recommended) Deduplication Check
-    # In a full implementation, you would check a Redis cache or a `processed_webhooks` table
-    # to see if this update_id has already been processed. For the MVP, we can start by
-    # inserting directly and add deduplication later.
-
-    # 3. Insert the job into the database
     try:
-        logger.info("Attempting to connect to the database to insert job...")
+        logger.info("Attempting to connect to the database to insert main bot job...")
         with engine.connect() as connection:
-            logger.info("Database connection successful. Beginning transaction.")
+            logger.info("Main bot DB connection successful. Beginning transaction.")
             with connection.begin() as transaction:
                 try:
-                    job_type = 'process_telegram_update'
+                    if 'chat_join_request' in update_data:
+                        job_type = 'tgms_process_join_request'
+                    else:
+                        job_type = 'process_telegram_update'
+
                     insert_query = text("""
                         INSERT INTO jobs (job_type, payload, status, created_at, updated_at)
                         VALUES (:job_type, :payload, 'pending', :created_at, :updated_at)
@@ -140,24 +151,98 @@ def handle_webhook():
                         'updated_at': datetime.utcnow()
                     })
                     transaction.commit()
-                    logger.info("Job insertion transaction committed.")
+                    logger.info("Main bot job insertion committed.")
                 except Exception:
                     transaction.rollback()
-                    logger.error("Transaction rolled back due to an error.")
+                    logger.error("Main bot transaction rolled back due to an error.")
                     raise
-        
-        logger.info(f"Successfully queued job for update_id: {update_id}")
+
+        logger.info(f"Successfully queued main bot job for update_id: {update_id}")
+        return jsonify({"status": "ok", "message": "Webhook received and queued"}), 200
 
     except Exception as e:
-        logger.error(f"Database error while inserting job for update_id {update_id}: {e}", exc_info=True)
-        # Even if the DB insert fails, we might still want to return 200 OK to Telegram
-        # to prevent retries, while logging the error for manual intervention.
-        # However, for initial debugging, returning a 500 might be more informative.
+        logger.error(f"Database error while inserting main bot job {update_id}: {e}", exc_info=True)
         return jsonify({"status": "error", "message": "Failed to queue job"}), 500
 
-    # 4. Return an immediate 200 OK response
-    # This is critical to meet Telegram's requirement for a fast response.
-    return jsonify({"status": "ok", "message": "Webhook received and queued"}), 200
+
+def _handle_tgms_update(update_data: dict):
+    """Handle updates for the TGMS bot."""
+    update_id = update_data.get('update_id')
+    logger.info(f"Received TGMS webhook with update_id: {update_id}")
+
+    try:
+        with engine.connect() as connection:
+            with connection.begin() as transaction:
+                try:
+                    if 'chat_join_request' in update_data:
+                        job_type = 'tgms_process_join_request'
+                    else:
+                        job_type = 'tgms_process_update'
+
+                    insert_query = text("""
+                        INSERT INTO jobs (job_type, payload, status, created_at, updated_at)
+                        VALUES (:job_type, :payload, 'pending', :created_at, :updated_at)
+                    """)
+                    connection.execute(insert_query, {
+                        'job_type': job_type,
+                        'payload': json.dumps(update_data),
+                        'created_at': datetime.utcnow(),
+                        'updated_at': datetime.utcnow()
+                    })
+                    transaction.commit()
+                    logger.info("TGMS job insertion committed.")
+                except Exception:
+                    transaction.rollback()
+                    logger.error("TGMS transaction rolled back due to an error.")
+                    raise
+
+        logger.info(f"Successfully queued TGMS job for update_id: {update_id}")
+        return jsonify({"status": "ok", "message": "TGMS webhook received"}), 200
+
+    except Exception as e:
+        logger.error(f"Database error while inserting TGMS job {update_id}: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": "Failed to queue TGMS job"}), 500
+
+
+@app.route('/api/tgms/send', methods=['POST'])
+def enqueue_tgms_send():
+    """
+    Admin endpoint to enqueue a broadcast to managed groups.
+    Body JSON: { "text": "...", "photo_url": "...", "caption": "..." }
+    Requires ADMIN_API_KEY environment variable and 'x-api-key' header.
+    """
+    if not engine:
+        return jsonify({"status": "error", "message": "DB not ready"}), 500
+
+    admin_key = os.environ.get('ADMIN_API_KEY')
+    provided_key = request.headers.get('x-api-key')
+    if not admin_key or provided_key != admin_key:
+        return jsonify({"status": "error", "message": "Unauthorized"}), 401
+
+    payload = request.get_json(force=True) or {}
+    job_type = 'tgms_send_to_groups'
+    try:
+        with engine.connect() as connection:
+            with connection.begin() as transaction:
+                try:
+                    insert_query = text("""
+                        INSERT INTO jobs (job_type, payload, status, created_at, updated_at)
+                        VALUES (:job_type, :payload, 'pending', :created_at, :updated_at)
+                    """)
+                    connection.execute(insert_query, {
+                        'job_type': job_type,
+                        'payload': json.dumps(payload),
+                        'created_at': datetime.utcnow(),
+                        'updated_at': datetime.utcnow()
+                    })
+                    transaction.commit()
+                except Exception:
+                    transaction.rollback()
+                    raise
+        return jsonify({"status": "ok", "message": "Broadcast enqueued"}), 200
+    except Exception as e:
+        logger.error(f"Failed to enqueue tgms send: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": "Failed to enqueue"}), 500
 
 @app.route('/', methods=['GET'])
 def index():
