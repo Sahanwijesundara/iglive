@@ -50,7 +50,7 @@ async def send_user_feedback(user_id: int, message: str):
 async def send_main_menu(user_id: int, prefix_message: str = ""):
     """Send the main menu to a user."""
     try:
-        menu_text = f"{prefix_message}🎉 Welcome to InstaLive Pro! 🎉\n\n"
+        menu_text = f"{prefix_message}🎉 Welcome to IGLiveZBot! 🎉\n\n"
         menu_text += "📱 Check who's live on Instagram\n"
         menu_text += "💰 Manage your points and subscription\n"
         menu_text += "🎁 Invite friends for bonus points\n\n"
