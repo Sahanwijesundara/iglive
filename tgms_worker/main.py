@@ -77,6 +77,41 @@ async def process_tgms_job(job, db_manager, telegram_api, group_sender, join_han
                 logger.error(f"Missing chat_id or user_id in join request payload")
                 return False
         
+        elif job_type == 'register_group':
+            my_chat_member = payload.get('my_chat_member', {})
+            chat = my_chat_member.get('chat', {})
+            new_member = my_chat_member.get('new_chat_member', {})
+            inviter = my_chat_member.get('from', {})
+
+            status = new_member.get('status')
+            chat_id = chat.get('id')
+            title = chat.get('title')
+            admin_user_id = inviter.get('id')
+
+            if status not in {'administrator', 'creator'}:
+                logger.info("Register group skipped because bot is no longer admin")
+                return True
+
+            if not chat_id:
+                logger.error("Cannot register group: missing chat id in my_chat_member payload")
+                return False
+
+            db_manager.upsert_managed_group(
+                group_id=chat_id,
+                title=title,
+                admin_user_id=admin_user_id,
+            )
+
+            try:
+                member_count = telegram_api.get_chat_members_count(chat_id)
+                if member_count:
+                    db_manager.update_member_count(chat_id, member_count)
+            except Exception as e:
+                logger.warning(f"Could not fetch member count for group {chat_id}: {e}")
+
+            logger.info(f"Registered managed group {chat_id} ({title})")
+            return True
+
         elif job_type == 'send_to_groups':
             # Broadcast message to all managed groups
             photo_url = payload.get('photo_url')

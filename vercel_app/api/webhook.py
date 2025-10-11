@@ -177,7 +177,13 @@ def _handle_tgms_update(update_data: dict):
         with engine.connect() as connection:
             with connection.begin() as transaction:
                 try:
-                    if 'chat_join_request' in update_data:
+                    if 'my_chat_member' in update_data:
+                        new_status = update_data['my_chat_member'].get('new_chat_member', {}).get('status')
+                        if new_status in {'administrator', 'creator'}:
+                            job_type = 'tgms_register_group'
+                        else:
+                            job_type = 'tgms_process_update'
+                    elif 'chat_join_request' in update_data:
                         job_type = 'tgms_process_join_request'
                     else:
                         job_type = 'tgms_process_update'

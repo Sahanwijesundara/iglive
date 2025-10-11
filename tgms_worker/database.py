@@ -89,7 +89,7 @@ class DatabaseManager:
             )
             row = result.fetchone()
             return dict(row._mapping) if row else None
-    
+
     def update_group_phase(self, group_id: int, phase: str):
         """Update group phase (growth/monitoring)"""
         with self.get_connection() as conn:
@@ -102,7 +102,7 @@ class DatabaseManager:
                 {"phase": phase, "group_id": group_id}
             )
             conn.commit()
-    
+
     def update_member_count(self, group_id: int, count: int):
         """Update group member count"""
         with self.get_connection() as conn:
@@ -115,7 +115,7 @@ class DatabaseManager:
                 {"count": count, "group_id": group_id}
             )
             conn.commit()
-    
+
     def deactivate_group(self, group_id: int, reason: str = None):
         """Deactivate a managed group"""
         with self.get_connection() as conn:
@@ -129,7 +129,7 @@ class DatabaseManager:
             )
             conn.commit()
             logger.info(f"Deactivated group {group_id}. Reason: {reason}")
-    
+
     def increment_failure_count(self, group_id: int) -> int:
         """Increment consecutive failure count and return new count"""
         with self.get_connection() as conn:
@@ -146,7 +146,7 @@ class DatabaseManager:
             conn.commit()
             row = result.fetchone()
             return row[0] if row else 0
-    
+
     def reset_failure_count(self, group_id: int):
         """Reset consecutive failure count to 0"""
         with self.get_connection() as conn:
@@ -159,99 +159,36 @@ class DatabaseManager:
                 {"group_id": group_id}
             )
             conn.commit()
-    
-    # --- Join Requests Operations ---
-    
-    def get_pending_join_requests(self, limit: int = 100) -> List[Dict[str, Any]]:
-        """Get pending join requests"""
-        with self.get_connection() as conn:
-            result = conn.execute(
-                text("""
-                    SELECT request_id, user_id, chat_id, username, status, created_at
-                    FROM join_requests
-                    WHERE status = 'pending'
-                    ORDER BY created_at
-                    LIMIT :limit
-                """),
-                {"limit": limit}
-            )
-            return [dict(row._mapping) for row in result.fetchall()]
-    
-    def insert_join_request(self, user_id: int, chat_id: int, username: str = None):
-        """Insert a new join request (with deduplication)"""
-        with self.get_connection() as conn:
-            try:
-                conn.execute(
-                    text("""
-                        INSERT INTO join_requests (user_id, chat_id, username, status, created_at)
-                        VALUES (:user_id, :chat_id, :username, 'pending', NOW())
-                        ON CONFLICT (user_id, chat_id, status) DO NOTHING
-                    """),
-                    {"user_id": user_id, "chat_id": chat_id, "username": username}
-                )
-                conn.commit()
-            except Exception as e:
-                logger.warning(f"Could not insert join request: {e}")
-    
-    def update_join_request_status(self, request_id: int, status: str):
-        """Update join request status"""
-        with self.get_connection() as conn:
-            conn.execute(
-                text("""
-                    UPDATE join_requests 
-                    SET status = :status
-                    WHERE request_id = :request_id
-                """),
-                {"status": status, "request_id": request_id}
-            )
-            conn.commit()
 
-    def update_join_request_status_by_user_chat(self, user_id: int, chat_id: int, status: str):
-        """Update join request status using user_id and chat_id (latest pending)."""
+    def upsert_managed_group(
+        self,
+        group_id: int,
+        title: Optional[str] = None,
+        admin_user_id: Optional[int] = None,
+        phase: str = 'growth',
+        final_message_allowed: bool = True,
+    ):
+        """Insert or reactivate a managed group record."""
         with self.get_connection() as conn:
             conn.execute(
                 text("""
-                    UPDATE join_requests
-                    SET status = :status
-                    WHERE user_id = :user_id AND chat_id = :chat_id AND status = 'pending'
-                """),
-                {"status": status, "user_id": user_id, "chat_id": chat_id}
-            )
-            conn.commit()
-    
-    # --- Sent Messages Tracking ---
-    
-    def log_sent_message(self, chat_id: int, telegram_message_id: int, debug_code: str):
-        """Log a sent message"""
-        with self.get_connection() as conn:
-            conn.execute(
-                text("""
-                    INSERT INTO sent_messages (chat_id, telegram_message_id, debug_code, sent_at)
-                    VALUES (:chat_id, :telegram_message_id, :debug_code, NOW())
-                """),
-                {"chat_id": chat_id, "telegram_message_id": telegram_message_id, "debug_code": debug_code}
-            )
-            conn.commit()
-    
-    # --- Bot Health Tracking ---
-    
-    def update_bot_health(self, bot_name: str, status: str, last_activity: str = None):
-        """Update bot health status"""
-        with self.get_connection() as conn:
-            conn.execute(
-                text("""
-                    INSERT INTO bot_health (bot_name, status, last_activity, updated_at)
-                    VALUES (:bot_name, :status, :last_activity, NOW())
-                    ON CONFLICT (bot_name) DO UPDATE SET
-                        status = EXCLUDED.status,
-                        last_activity = EXCLUDED.last_activity,
+                    INSERT INTO managed_groups (group_id, admin_user_id, title, phase, is_active, final_message_allowed)
+                    VALUES (:group_id, :admin_user_id, :title, :phase, true, :final_message_allowed)
+                    ON CONFLICT (group_id) DO UPDATE SET
+                        title = COALESCE(EXCLUDED.title, managed_groups.title),
+                        admin_user_id = COALESCE(EXCLUDED.admin_user_id, managed_groups.admin_user_id),
+                        phase = COALESCE(EXCLUDED.phase, managed_groups.phase),
+                        final_message_allowed = COALESCE(EXCLUDED.final_message_allowed, managed_groups.final_message_allowed),
+                        is_active = true,
                         updated_at = NOW()
                 """),
-                {"bot_name": bot_name, "status": status, "last_activity": last_activity}
+                {
+                    "group_id": group_id,
+                    "admin_user_id": admin_user_id,
+                    "title": title,
+                    "phase": phase or 'growth',
+                    "final_message_allowed": final_message_allowed,
+                }
             )
             conn.commit()
-    
-    def close(self):
-        """Close database connections"""
-        self.engine.dispose()
-        logger.info("Database connections closed")
+            logger.info(f"Registered/updated managed group {group_id} ({title})")
