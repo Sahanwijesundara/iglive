@@ -68,9 +68,9 @@ def handle_webhook():
         logger.error("Database engine is not available. Cannot process webhook.")
         return jsonify({"status": "error", "message": "Database connection failed"}), 500
 
-    incoming_token = request.headers.get('X-Telegram-Bot-Token')
-    if not incoming_token:
-        logger.warning("Missing bot token header on webhook request")
+    secret_header = request.headers.get('X-Telegram-Bot-Api-Secret-Token')
+    if not secret_header:
+        logger.warning("Missing Telegram secret token header")
         return jsonify({"status": "error", "message": "Unauthorized"}), 403
 
     try:
@@ -82,13 +82,13 @@ def handle_webhook():
         logger.error(f"Error decoding JSON payload: {e}", exc_info=True)
         return jsonify({"status": "error", "message": "Bad request"}), 400
 
-    if incoming_token == os.environ.get('TGMS_BOT_TOKEN'):
+    if secret_header == os.environ.get('TGMS_SECRET_TOKEN'):
         return _handle_tgms_update(update_data)
 
-    if incoming_token == os.environ.get('BOT_TOKEN'):
+    if secret_header == os.environ.get('MAIN_SECRET_TOKEN'):
         return _handle_main_update(update_data)
 
-    logger.warning(f"Rejected webhook from unauthorized bot token: {incoming_token}")
+    logger.warning("Rejected webhook from unauthorized secret token")
     return jsonify({"status": "error", "message": "Unauthorized"}), 403
 
 
