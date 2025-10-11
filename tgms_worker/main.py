@@ -135,21 +135,21 @@ async def worker_main_loop(session_factory, db_manager, telegram_api, group_send
     - Updates job status
     """
     run_once_retries = 0
-    
     while True:
         job_to_process = None
         session = session_factory()
         
         try:
-            # Fetch and lock a job
+            # --- 1. Fetch and Lock a Job ---
             select_query = text("""
                 SELECT * FROM jobs
-                WHERE status = 'pending' AND job_type LIKE 'tgms_%'
+                WHERE status = 'pending'
+                  AND bot_token = :bot_token
                 ORDER BY created_at
                 LIMIT 1
                 FOR UPDATE SKIP LOCKED
             """)
-            result = session.execute(select_query).fetchone()
+            result = session.execute(select_query, {'bot_token': os.environ.get('TGMS_BOT_TOKEN')}).fetchone()
             
             if result:
                 job_to_process = dict(result._mapping)
