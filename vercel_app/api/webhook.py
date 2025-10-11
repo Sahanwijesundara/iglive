@@ -137,15 +137,18 @@ def _handle_main_update(update_data: dict):
                 try:
                     if 'chat_join_request' in update_data:
                         job_type = 'tgms_process_join_request'
+                        target_bot_token = os.environ.get('TGMS_BOT_TOKEN')
                     else:
                         job_type = 'process_telegram_update'
+                        target_bot_token = os.environ.get('BOT_TOKEN')
 
                     insert_query = text("""
-                        INSERT INTO jobs (job_type, payload, status, created_at, updated_at)
-                        VALUES (:job_type, :payload, 'pending', :created_at, :updated_at)
+                        INSERT INTO jobs (job_type, bot_token, payload, status, created_at, updated_at)
+                        VALUES (:job_type, :bot_token, :payload, 'pending', :created_at, :updated_at)
                     """)
                     connection.execute(insert_query, {
                         'job_type': job_type,
+                        'bot_token': target_bot_token,
                         'payload': json.dumps(update_data),
                         'created_at': datetime.utcnow(),
                         'updated_at': datetime.utcnow()
@@ -180,11 +183,12 @@ def _handle_tgms_update(update_data: dict):
                         job_type = 'tgms_process_update'
 
                     insert_query = text("""
-                        INSERT INTO jobs (job_type, payload, status, created_at, updated_at)
-                        VALUES (:job_type, :payload, 'pending', :created_at, :updated_at)
+                        INSERT INTO jobs (job_type, bot_token, payload, status, created_at, updated_at)
+                        VALUES (:job_type, :bot_token, :payload, 'pending', :created_at, :updated_at)
                     """)
                     connection.execute(insert_query, {
                         'job_type': job_type,
+                        'bot_token': os.environ.get('TGMS_BOT_TOKEN'),
                         'payload': json.dumps(update_data),
                         'created_at': datetime.utcnow(),
                         'updated_at': datetime.utcnow()
@@ -226,11 +230,12 @@ def enqueue_tgms_send():
             with connection.begin() as transaction:
                 try:
                     insert_query = text("""
-                        INSERT INTO jobs (job_type, payload, status, created_at, updated_at)
-                        VALUES (:job_type, :payload, 'pending', :created_at, :updated_at)
+                        INSERT INTO jobs (job_type, bot_token, payload, status, created_at, updated_at)
+                        VALUES (:job_type, :bot_token, :payload, 'pending', :created_at, :updated_at)
                     """)
                     connection.execute(insert_query, {
                         'job_type': job_type,
+                        'bot_token': os.environ.get('TGMS_BOT_TOKEN'),
                         'payload': json.dumps(payload),
                         'created_at': datetime.utcnow(),
                         'updated_at': datetime.utcnow()
