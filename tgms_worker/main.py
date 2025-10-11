@@ -65,8 +65,23 @@ async def process_tgms_job(job, db_manager, telegram_api, group_sender, join_han
             chat_id = chat_join_request.get('chat', {}).get('id')
             user_id = chat_join_request.get('from', {}).get('id')
             username = chat_join_request.get('from', {}).get('username', '')
-            
+
             if chat_id and user_id:
+                managed_group = db_manager.get_managed_group(chat_id)
+                if not managed_group:
+                    status = telegram_api.get_bot_member_status(chat_id)
+                    if status in {'administrator', 'creator'}:
+                        logger.info(f"Bot is admin in {chat_id}; auto-registering group before join handling")
+                        try:
+                            inviter = chat_join_request.get('from', {})
+                            db_manager.upsert_managed_group(
+                                group_id=chat_id,
+                                title=chat_join_request.get('chat', {}).get('title'),
+                                admin_user_id=inviter.get('id'),
+                            )
+                        except Exception as reg_err:
+                            logger.error(f"Failed to auto-register group {chat_id}: {reg_err}", exc_info=True)
+
                 success = await join_handler.process_join_request(
                     chat_id=chat_id,
                     user_id=user_id,
@@ -76,7 +91,7 @@ async def process_tgms_job(job, db_manager, telegram_api, group_sender, join_han
             else:
                 logger.error(f"Missing chat_id or user_id in join request payload")
                 return False
-        
+
         elif job_type == 'register_group':
             my_chat_member = payload.get('my_chat_member', {})
             chat = my_chat_member.get('chat', {})

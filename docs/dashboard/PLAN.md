@@ -6,11 +6,14 @@
 - **[Control worker behavior]** Allow toggling features such as auto-approval and broadcast throttling without redeploying.
 
 ## Data Sources
-- **[jobs]** Queue metrics (pending, processing, failed) scoped by `bot_token`.
-- **[managed_groups]** Lifecycle status, activity phase, and failure counters.
+- **[telegram_users]** Total member count, join timestamps, last_seen, `daily_points`, `lifetime_points`.
+- **[managed_groups]** Lifecycle status, activity phase, `member_count`, `consecutive_failures`.
+- **[jobs]** Queue metrics (pending, processing, failed) scoped by `bot_token` (main, TGMS).
 - **[join_requests]** Approval pipeline statistics and outstanding requests.
-- **[bot_health]** Worker heartbeat timestamps and status fields.
+- **[bot_health]** Worker heartbeat timestamps, last job processed, error counters.
 - **[sent_messages]** Broadcast delivery audit trail.
+- **[worker_settings]** Feature toggles (`auto_register_groups`, `daily_points_default`, throttles) and change history.
+- **[queue_items]** Image engine backlog for profile scoring tasks.
 
 ## Core Views
 - **[Operations Overview]**
@@ -19,6 +22,11 @@
 - **[TGMS Join Requests]**
   - Table of pending requests with filters (group, requested_at).
   - Actions: approve/deny (trigger TGMS worker job).
+- **[Member Analytics]**
+  - KPI cards: total `telegram_users`, week-over-week delta, active vs. dormant (7/30/60-day `last_seen`).
+  - Line chart: total member growth over time (daily joins from `telegram_users.created_at`).
+  - Group breakdown: stacked bar or table of `managed_groups.member_count`, highlighting inactive or high-failure groups.
+  - Alert badges: drops >10% in `member_count`, spikes in auto-registration failures.
 - **[Managed Groups]**
   - Grid showing `phase`, `is_active`, `member_count`, `consecutive_failures`.
   - Controls to toggle broadcasting or deactivate a group.
@@ -27,6 +35,13 @@
 - **[Worker Settings]**
   - Toggle switches and numeric inputs for per-bot configuration flags.
   - Audit log of setting changes.
+
+## Additional Metrics & Alerts
+- **[TGMS Auto-Registration Health]** Success/failure counts for `register_group` jobs; retry button for failed registrations.
+- **[Points Balances]** Average `daily_points` vs. `lifetime_points`, number of users at zero daily allowance.
+- **[Referral Impact]** Conversions sourced from `referrals` table (optional Phase 3).
+- **[Image Engine Pipeline]** Pending vs. processed `queue_items` for profile scoring.
+- **[Alert Thresholds]** Define triggers for queue backlog, heartbeat gaps, broadcast failures, and membership drops.
 
 ## Configuration Model
 - **[worker_settings table]**

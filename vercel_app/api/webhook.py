@@ -214,6 +214,240 @@ def _handle_tgms_update(update_data: dict):
         return jsonify({"status": "error", "message": "Failed to queue TGMS job"}), 500
 
 
+@app.route('/api/admin/dashboard/metrics', methods=['GET'])
+def get_dashboard_metrics():
+    """Aggregate metrics for the admin dashboard."""
+    if not engine:
+        logger.error("Dashboard metrics requested but DB engine unavailable")
+        return jsonify({"status": "error", "message": "Database unavailable"}), 500
+
+    admin_key = os.environ.get('ADMIN_API_KEY')
+    provided_key = request.headers.get('x-api-key')
+    if not admin_key or provided_key != admin_key:
+        return jsonify({"status": "error", "message": "Unauthorized"}), 401
+
+    metrics = {
+        "members": {},
+        "groups": [],
+        "jobs": {"by_status": [], "by_bot": []},
+        "tgms": {"register_group_jobs": []},
+        "points": {},
+        "queues": {},
+        "errors": []
+    }
+
+    try:
+        with engine.connect() as connection:
+            # --- Member metrics ---
+            try:
+                total_users = connection.execute(text("SELECT COUNT(*) FROM telegram_users"))
+                metrics["members"]["total"] = int(total_users.scalar() or 0)
+            except Exception as exc:
+                metrics["errors"].append(f"telegram_users.total: {exc}")
+
+            try:
+                active_7 = connection.execute(text(
+                    """
+                    SELECT COUNT(*) FROM telegram_users
+                    WHERE COALESCE(last_seen, NOW()) >= NOW() - INTERVAL '7 days'
+                    """
+                ))
+                active_30 = connection.execute(text(
+                    """
+                    SELECT COUNT(*) FROM telegram_users
+                    WHERE COALESCE(last_seen, NOW()) >= NOW() - INTERVAL '30 days'
+                    """
+                ))
+                metrics["members"]["active_7d"] = int(active_7.scalar() or 0)
+                metrics["members"]["active_30d"] = int(active_30.scalar() or 0)
+            except Exception as exc:
+                metrics["errors"].append(f"telegram_users.active: {exc}")
+
+            date_expr = "last_seen"
+            try:
+                created_exists = connection.execute(text(
+                    """
+                    SELECT EXISTS (
+                        SELECT 1 FROM information_schema.columns
+                        WHERE table_schema = current_schema()
+                          AND table_name = 'telegram_users'
+                          AND column_name = 'created_at'
+                    )
+                    """
+                )).scalar()
+                if created_exists:
+                    date_expr = "COALESCE(created_at, last_seen)"
+            except Exception:
+                date_expr = "last_seen"
+
+            try:
+                new_last_7 = connection.execute(text(
+                    f"""
+                    SELECT COUNT(*) FROM telegram_users
+                    WHERE {date_expr} >= NOW() - INTERVAL '7 days'
+                    """
+                ))
+                metrics["members"]["new_last_7d"] = int(new_last_7.scalar() or 0)
+            except Exception as exc:
+                metrics["errors"].append(f"telegram_users.new_last_7d: {exc}")
+
+            try:
+                daily_rows = connection.execute(text(
+                    f"""
+                    SELECT TO_CHAR(date_bucket, 'YYYY-MM-DD') AS day, COUNT(*) AS count
+                    FROM (
+                        SELECT DATE_TRUNC('day', {date_expr}) AS date_bucket
+                        FROM telegram_users
+                        WHERE {date_expr} >= NOW() - INTERVAL '14 days'
+                    ) AS daily
+                    GROUP BY date_bucket
+                    ORDER BY date_bucket
+                    """
+                )).fetchall()
+                metrics["members"]["daily_joins_last_14d"] = [
+                    {"day": row._mapping["day"], "count": int(row._mapping["count"])}
+                    for row in daily_rows
+                ]
+            except Exception as exc:
+                metrics["errors"].append(f"telegram_users.daily_joins: {exc}")
+
+            # --- Managed groups ---
+            try:
+                group_rows = connection.execute(text(
+                    """
+                    SELECT group_id, title, member_count, phase, is_active,
+                           consecutive_failures, updated_at
+                    FROM managed_groups
+                    ORDER BY member_count DESC
+                    LIMIT 100
+                    """
+                )).fetchall()
+                metrics["groups"] = [
+                    {
+                        "group_id": row._mapping["group_id"],
+                        "title": row._mapping.get("title"),
+                        "member_count": row._mapping.get("member_count"),
+                        "phase": row._mapping.get("phase"),
+                        "is_active": row._mapping.get("is_active"),
+                        "consecutive_failures": row._mapping.get("consecutive_failures"),
+                        "updated_at": row._mapping.get("updated_at"),
+                    }
+                    for row in group_rows
+                ]
+            except Exception as exc:
+                metrics["errors"].append(f"managed_groups.list: {exc}")
+
+            # --- Jobs ---
+            try:
+                status_rows = connection.execute(text(
+                    "SELECT status, COUNT(*) AS count FROM jobs GROUP BY status"
+                )).fetchall()
+                metrics["jobs"]["by_status"] = [
+                    {"status": row._mapping["status"], "count": int(row._mapping["count"])}
+                    for row in status_rows
+                ]
+            except Exception as exc:
+                metrics["errors"].append(f"jobs.by_status: {exc}")
+
+            try:
+                bot_rows = connection.execute(text(
+                    """
+                    SELECT COALESCE(bot_token, 'unknown') AS bot_token,
+                           status,
+                           COUNT(*) AS count
+                    FROM jobs
+                    GROUP BY COALESCE(bot_token, 'unknown'), status
+                    """
+                )).fetchall()
+                metrics["jobs"]["by_bot"] = [
+                    {
+                        "bot_token": row._mapping["bot_token"],
+                        "status": row._mapping["status"],
+                        "count": int(row._mapping["count"]),
+                    }
+                    for row in bot_rows
+                ]
+            except Exception as exc:
+                metrics["errors"].append(f"jobs.by_bot: {exc}")
+
+            try:
+                register_rows = connection.execute(text(
+                    """
+                    SELECT status, COUNT(*) AS count
+                    FROM jobs
+                    WHERE job_type = 'tgms_register_group'
+                    GROUP BY status
+                    """
+                )).fetchall()
+                metrics["tgms"]["register_group_jobs"] = [
+                    {"status": row._mapping["status"], "count": int(row._mapping["count"])}
+                    for row in register_rows
+                ]
+            except Exception as exc:
+                metrics["errors"].append(f"jobs.register_group: {exc}")
+
+            # --- Points ---
+            try:
+                points_row = connection.execute(text(
+                    """
+                    SELECT
+                        AVG(daily_points) AS avg_daily,
+                        AVG(lifetime_points) AS avg_lifetime,
+                        SUM(CASE WHEN daily_points <= 0 THEN 1 ELSE 0 END) AS zero_daily
+                    FROM telegram_users
+                    """
+                )).first()
+                if points_row:
+                    metrics["points"] = {
+                        "avg_daily_points": float(points_row._mapping.get("avg_daily") or 0.0),
+                        "avg_lifetime_points": float(points_row._mapping.get("avg_lifetime") or 0.0),
+                        "users_zero_daily": int(points_row._mapping.get("zero_daily") or 0),
+                    }
+            except Exception as exc:
+                metrics["errors"].append(f"telegram_users.points: {exc}")
+
+            # --- Queue items (image engine) ---
+            try:
+                queue_row = connection.execute(text(
+                    """
+                    SELECT
+                        SUM(CASE WHEN processed = false THEN 1 ELSE 0 END) AS pending,
+                        COUNT(*) AS total
+                    FROM queue_items
+                    """
+                )).first()
+                if queue_row:
+                    metrics["queues"]["image_engine"] = {
+                        "pending": int(queue_row._mapping.get("pending") or 0),
+                        "total": int(queue_row._mapping.get("total") or 0),
+                    }
+            except Exception as exc:
+                metrics["errors"].append(f"queue_items.image_engine: {exc}")
+
+            # --- Bot health ---
+            try:
+                health_rows = connection.execute(text(
+                    "SELECT bot_name, status, updated_at, last_activity FROM bot_health"
+                )).fetchall()
+                metrics["bot_health"] = [
+                    {
+                        "bot_name": row._mapping["bot_name"],
+                        "status": row._mapping.get("status"),
+                        "updated_at": row._mapping.get("updated_at"),
+                        "last_activity": row._mapping.get("last_activity"),
+                    }
+                    for row in health_rows
+                ]
+            except Exception as exc:
+                metrics["errors"].append(f"bot_health.list: {exc}")
+
+    except Exception as exc:
+        logger.error(f"Failed to build dashboard metrics: {exc}", exc_info=True)
+        return jsonify({"status": "error", "message": "Failed to build metrics"}), 500
+
+    return jsonify({"status": "ok", "data": metrics}), 200
+
+
 @app.route('/api/tgms/send', methods=['POST'])
 def enqueue_tgms_send():
     """

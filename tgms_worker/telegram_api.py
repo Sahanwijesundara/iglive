@@ -15,7 +15,9 @@ class TelegramAPI:
         self.bot_token = bot_token
         self.base_url = f"https://api.telegram.org/bot{bot_token}"
         self.session = requests.Session()
-    
+        self.bot_id = None
+        self.refresh_bot_identity()
+
     def _request(self, method: str, **kwargs):
         """Make API request with error handling"""
         url = f"{self.base_url}/{method}"
@@ -26,7 +28,19 @@ class TelegramAPI:
         except Exception as e:
             logger.error(f"API request failed: {method} - {e}")
             return {"ok": False, "error": str(e)}
-    
+
+    def get_me(self):
+        """Fetch basic bot information."""
+        return self._request("getMe")
+
+    def refresh_bot_identity(self):
+        """Ensure bot_id is cached for subsequent requests."""
+        result = self.get_me()
+        if result.get("ok"):
+            self.bot_id = result["result"].get("id")
+        else:
+            logger.warning(f"Could not refresh bot identity: {result.get('error')}")
+
     def send_message(self, chat_id: int, text: str, **kwargs):
         """Send text message"""
         return self._request("sendMessage", chat_id=chat_id, text=text, **kwargs)
@@ -58,3 +72,22 @@ class TelegramAPI:
     def delete_message(self, chat_id: int, message_id: int):
         """Delete message"""
         return self._request("deleteMessage", chat_id=chat_id, message_id=message_id)
+
+    def get_chat_member(self, chat_id: int, user_id: int):
+        """Retrieve membership info for a user within a chat."""
+        return self._request("getChatMember", chat_id=chat_id, user_id=user_id)
+
+    def get_bot_member_status(self, chat_id: int):
+        """Return the bot's status (administrator/member/etc.) for a chat."""
+        if not self.bot_id:
+            self.refresh_bot_identity()
+        if not self.bot_id:
+            logger.error("Bot ID unavailable; cannot determine membership status")
+            return None
+
+        result = self.get_chat_member(chat_id, self.bot_id)
+        if result.get("ok"):
+            return result["result"].get("status")
+
+        logger.warning(f"getChatMember failed for chat {chat_id}: {result.get('error')}")
+        return None
